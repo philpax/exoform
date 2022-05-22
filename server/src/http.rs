@@ -13,29 +13,41 @@ use crate::file_store::FileStore;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct HttpRequest(pub String, pub String);
 
+enum Body<'a> {
+    Text(String),
+    Gzip(&'a [u8]),
+}
+
 pub struct ClientProcess {
     stream: net::TcpStream,
     files: ProcessRef<FileStore>,
 }
 
 impl ClientProcess {
-    pub fn respond(
+    fn respond(
         &mut self,
         (status, reason): (u16, &str),
         mime_type: String,
-        body: &[u8],
+        body: Body,
     ) -> anyhow::Result<()> {
+        let mut fields = vec![("Content-Type", mime_type)];
+        let body = match &body {
+            Body::Text(text) => text.as_bytes(),
+            Body::Gzip(buf) => {
+                fields.push(("Content-Encoding", "gzip".to_string()));
+                buf
+            }
+        };
+        fields.push(("Content-Length", body.len().to_string()));
+
         http_tiny::Header::new(
             http_tiny::HeaderStartLine::new_response(status, reason),
-            http_tiny::HeaderFields::from_iter([
-                ("Content-Type", mime_type),
-                ("Content-Length", body.len().to_string()),
-            ]),
+            http_tiny::HeaderFields::from_iter(fields.into_iter()),
         )
         .write_all(&mut self.stream)
         .ok()
         .context("failed to write header")?;
-        self.stream.write_all(&body)?;
+        self.stream.write_all(body)?;
 
         Ok(())
     }
@@ -85,20 +97,25 @@ impl ProcessMessage<HttpRequest> for ClientProcess {
             };
 
             if let Some((mime_type, data)) = state.files.request(target) {
-                return state.respond((200, "OK"), mime_type, &data).unwrap();
+                return state
+                    .respond((200, "OK"), mime_type, Body::Gzip(&data))
+                    .unwrap();
             }
         }
 
         state
-            .respond((404, "Not Found"), "text/html".to_string(), {
-                use malvolio::prelude::*;
+            .respond(
+                (404, "Not Found"),
+                "text/html".to_string(),
+                Body::Text({
+                    use malvolio::prelude::*;
 
-                html()
-                    .head(head().child(title("There be dragons here")))
-                    .body(body().h1("404 Not Found"))
-                    .to_string()
-                    .as_bytes()
-            })
+                    html()
+                        .head(head().child(title("There be dragons here")))
+                        .body(body().h1("404 Not Found"))
+                        .to_string()
+                }),
+            )
             .unwrap();
 
         std::process::exit(1);

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use lunatic::process::{AbstractProcess, ProcessRef, ProcessRequest};
 
@@ -17,13 +17,17 @@ impl AbstractProcess for FileStore {
                 .filter_map(Result::ok)
                 .filter_map(|de| {
                     let path = de.path();
-                    Some((
-                        path.file_name()?.to_string_lossy().to_ascii_lowercase(),
-                        (
-                            new_mime_guess::from_path(&path).first()?.to_string(),
-                            std::fs::read(de.path()).unwrap(),
-                        ),
-                    ))
+                    let filename = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+                    let mime_type = new_mime_guess::from_path(&path).first()?.to_string();
+                    let file = {
+                        let raw = std::fs::read(de.path()).unwrap();
+                        let mut encoder =
+                            flate2::write::GzEncoder::new(vec![], flate2::Compression::default());
+                        encoder.write_all(&raw).unwrap();
+                        encoder.finish().unwrap()
+                    };
+
+                    Some((filename, (mime_type, file)))
                 })
                 .collect(),
         }
