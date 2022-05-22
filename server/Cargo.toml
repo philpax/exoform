@@ -1,0 +1,17 @@
+[package]
+name = "sdfbox-server"
+version = "0.1.0"
+authors = ["Philpax <me@philpax.me>"]
+edition = "2021"
+
+[dependencies]
+lunatic = { version = "^0.9.1"}
+serde = { version = "1.0", features = ["derive"] }
+itertools = "0.10"
+numtoa = "0.2"
+clap = { version = "^3.1.0", features = ["derive"] }
+chrono = "0.4.19"
+anyhow = "1"
+http_tiny = "1.0.3"
+new_mime_guess = "4.0.1"
+malvolio = "0.3.1"
