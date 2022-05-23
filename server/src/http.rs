@@ -96,9 +96,9 @@ impl ProcessMessage<HttpRequest> for ClientProcess {
                 target
             };
 
-            if let Some((mime_type, data)) = state.files.request(target) {
+            if let Some(file) = state.files.request(target) {
                 return state
-                    .respond((200, "OK"), mime_type, Body::Gzip(&data))
+                    .respond((200, "OK"), file.mime_type, Body::Gzip(&file.data))
                     .unwrap();
             }
         }
@@ -118,6 +118,6 @@ impl ProcessMessage<HttpRequest> for ClientProcess {
             )
             .unwrap();
 
-        std::process::exit(1);
+        std::process::exit(0);
     }
 }

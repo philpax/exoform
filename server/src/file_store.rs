@@ -1,9 +1,22 @@
 use std::{collections::HashMap, io::Write};
 
 use lunatic::process::{AbstractProcess, ProcessRef, ProcessRequest};
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct File {
+    pub mime_type: String,
+    #[serde(with = "serde_bytes")]
+    pub data: Vec<u8>,
+}
+impl File {
+    pub fn new(mime_type: String, data: Vec<u8>) -> Self {
+        Self { mime_type, data }
+    }
+}
 
 pub struct FileStore {
-    pub files: HashMap<String, (String, Vec<u8>)>,
+    pub files: HashMap<String, File>,
 }
 
 impl AbstractProcess for FileStore {
@@ -27,7 +40,7 @@ impl AbstractProcess for FileStore {
                         encoder.finish().unwrap()
                     };
 
-                    Some((filename, (mime_type, file)))
+                    Some((filename, File::new(mime_type, file)))
                 })
                 .collect(),
         }
@@ -35,7 +48,7 @@ impl AbstractProcess for FileStore {
 }
 
 impl ProcessRequest<String> for FileStore {
-    type Response = Option<(String, Vec<u8>)>;
+    type Response = Option<File>;
 
     fn handle(state: &mut Self::State, path: String) -> Self::Response {
         state.files.get(&path).cloned()
