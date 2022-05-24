@@ -1,6 +1,5 @@
 use std::io::{self as io, Write};
 
-use anyhow::Context;
 use lunatic::{
     net,
     process::{AbstractProcess, Message, ProcessMessage, ProcessRef, Request},
@@ -44,9 +43,7 @@ impl ClientProcess {
             http_tiny::HeaderStartLine::new_response(status, reason),
             http_tiny::HeaderFields::from_iter(fields.into_iter()),
         )
-        .write_all(&mut self.stream)
-        .ok()
-        .context("failed to write header")?;
+        .write_all(&mut self.stream)?;
         self.stream.write_all(body)?;
 
         Ok(())
