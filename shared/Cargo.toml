@@ -6,4 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.57"
 bevy_math = "0.7.0"
+glam = "0.20.5"
+kdl = "4.2.0"

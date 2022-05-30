@@ -16,6 +16,7 @@ egui_node_graph = {git = "https://github.com/philpax/egui_node_graph.git", branc
 saft = "0.30.0"
 smooth-bevy-cameras = "0.4.0"
 
+glam = "0.20.5"
 shared = {path = "../shared"}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
