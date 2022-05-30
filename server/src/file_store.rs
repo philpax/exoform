@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Write};
+use std::{collections::HashMap, io::Write, path::PathBuf};
 
 use lunatic::process::{AbstractProcess, ProcessRef, ProcessRequest};
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ impl File {
 }
 
 pub struct FileStore {
-    pub files: HashMap<String, File>,
+    pub files: HashMap<String, (PathBuf, String)>,
 }
 
 impl AbstractProcess for FileStore {
@@ -32,15 +32,8 @@ impl AbstractProcess for FileStore {
                     let path = de.path();
                     let filename = path.file_name()?.to_string_lossy().to_ascii_lowercase();
                     let mime_type = new_mime_guess::from_path(&path).first()?.to_string();
-                    let file = {
-                        let raw = std::fs::read(de.path()).unwrap();
-                        let mut encoder =
-                            flate2::write::GzEncoder::new(vec![], flate2::Compression::default());
-                        encoder.write_all(&raw).unwrap();
-                        encoder.finish().unwrap()
-                    };
 
-                    Some((filename, File::new(mime_type, file)))
+                    Some((filename, (path, mime_type)))
                 })
                 .collect(),
         }
@@ -51,6 +44,14 @@ impl ProcessRequest<String> for FileStore {
     type Response = Option<File>;
 
     fn handle(state: &mut Self::State, path: String) -> Self::Response {
-        state.files.get(&path).cloned()
+        let (path, mime_type) = state.files.get(&path)?;
+        let file = {
+            let raw = std::fs::read(path).unwrap();
+            let mut encoder = flate2::write::GzEncoder::new(vec![], flate2::Compression::default());
+            encoder.write_all(&raw).unwrap();
+            encoder.finish().unwrap()
+        };
+
+        Some(File::new(mime_type.clone(), file))
     }
 }
