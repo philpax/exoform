@@ -3,7 +3,15 @@ use bevy_math::prelude::*;
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
-    Sphere { position: Vec3, radius: f32 },
+    Sphere {
+        position: Vec3,
+        radius: f32,
+    },
+    RoundedCylinder {
+        cylinder_radius: f32,
+        half_height: f32,
+        rounding_radius: f32,
+    },
     Union(f32, Vec<Node>),
     Intersect(f32, (Box<Node>, Box<Node>)),
     Subtract(f32, (Box<Node>, Box<Node>)),
@@ -73,6 +81,22 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
             Ok(Node::Sphere {
                 position: Vec3::new(x, y, z),
                 radius: r,
+            })
+        }
+        "cylinder" => {
+            let entries = node.entries();
+            if entries.len() != 3 {
+                anyhow::bail!("expected cylinder_radius half_height rounding_radius for cylinder");
+            }
+
+            let cylinder_radius = entry_to_f32(&entries[0])?;
+            let half_height = entry_to_f32(&entries[1])?;
+            let rounding_radius = entry_to_f32(&entries[2])?;
+
+            Ok(Node::RoundedCylinder {
+                cylinder_radius,
+                half_height,
+                rounding_radius,
             })
         }
         "union" => {
@@ -235,5 +259,18 @@ intersect {
                 )
             ))
         );
+    }
+
+    #[test]
+    fn can_parse_rounded_cylinder() {
+        let input = "cylinder 0.5 1.0 0.1";
+        assert_eq!(
+            code_to_node(input).ok(),
+            Some(Node::RoundedCylinder {
+                cylinder_radius: 0.5,
+                half_height: 1.0,
+                rounding_radius: 0.1,
+            })
+        )
     }
 }

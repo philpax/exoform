@@ -25,22 +25,25 @@ pub fn main() {
     console_error_panic_hook::set_once();
 
     let description_base = r#"
-intersect {
-    subtract {
-        union {
-            rgb 255 0 0 {
-                sphere -0.5 0 0 1
+subtract {
+    intersect {
+        subtract 0.2 {
+            union 0.4 {
+                rgb 255 0 0 {
+                    sphere -0.5 0 0 1
+                }
+                rgb 0 255 0 {
+                    sphere 0 0 0.5 1
+                }
+                rgb 0 0 255 {
+                    sphere 0.5 0 0 1
+                }
             }
-            rgb 0 255 0 {
-                sphere 0 0 0.5 1
-            }
-            rgb 0 0 255 {
-                sphere 0.5 0 0 1
-            }
+            sphere 0 1 0 0.6
         }
-        sphere 0 1 0 0.6
+        sphere 0 0 0 1.2
     }
-    sphere 0 0 0 1.2
+    cylinder 0.5 2.0 0
 }
 "#;
 
@@ -70,6 +73,11 @@ intersect {
 fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
     match node {
         Node::Sphere { position, radius } => graph.sphere(*position, *radius),
+        Node::RoundedCylinder {
+            cylinder_radius,
+            half_height,
+            rounding_radius,
+        } => graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius),
         Node::Union(size, nodes) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.len() == 2 {
@@ -288,6 +296,14 @@ fn sdf_code_editor(
 fn render_egui_tree(ui: &mut egui::Ui, node: &Node) {
     let (name, children) = match node {
         Node::Sphere { position, radius } => (format!("Sphere({position}, {radius})"), vec![]),
+        Node::RoundedCylinder {
+            cylinder_radius,
+            half_height,
+            rounding_radius,
+        } => (
+            format!("Cylinder({cylinder_radius}, {half_height}, {rounding_radius})"),
+            vec![],
+        ),
         Node::Union(size, children) => (format!("Union({size})"), children.iter().collect()),
         Node::Intersect(size, (lhs, rhs)) => (
             format!("Intersect({size})"),
