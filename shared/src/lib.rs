@@ -10,16 +10,16 @@ pub enum Node {
     Rgb(f32, f32, f32, Box<Node>),
 }
 
-fn get_f32_attr(node: &kdl::KdlNode, key: &str) -> anyhow::Result<f32> {
-    value_to_f32(node.get(key).context(format!("expected {}", key))?.value())
-}
-
 fn value_to_f32(value: &kdl::KdlValue) -> anyhow::Result<f32> {
     value
         .as_i64()
         .map(|v| v as f32)
         .or(value.as_f64().map(|v| v as f32))
         .context("expected float")
+}
+
+fn entry_to_f32(entry: &kdl::KdlEntry) -> anyhow::Result<f32> {
+    value_to_f32(entry.value())
 }
 
 fn get_children_for_operation<'a>(
@@ -60,10 +60,15 @@ fn parse_lhs_rhs_for_operation(
 fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
     match node.name().value() {
         "sphere" => {
-            let x = get_f32_attr(node, "x")?;
-            let y = get_f32_attr(node, "y")?;
-            let z = get_f32_attr(node, "z")?;
-            let r = get_f32_attr(node, "r")?;
+            let entries = node.entries();
+            if entries.len() != 4 {
+                anyhow::bail!("expected x y z r for sphere");
+            }
+
+            let x = entry_to_f32(&entries[0])?;
+            let y = entry_to_f32(&entries[1])?;
+            let z = entry_to_f32(&entries[2])?;
+            let r = entry_to_f32(&entries[3])?;
 
             Ok(Node::Sphere {
                 position: Vec3::new(x, y, z),
@@ -71,31 +76,34 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
             })
         }
         "union" => {
-            let size = if node.get("size").is_some() {
-                get_f32_attr(node, "size")?
-            } else {
-                0.0
-            };
+            let size = node
+                .entries()
+                .get(0)
+                .map(entry_to_f32)
+                .transpose()?
+                .unwrap_or_default();
 
             let nodes = parse_children_for_operation(node, "union")?;
             Ok(Node::Union(size, nodes))
         }
         "intersect" => {
-            let size = if node.get("size").is_some() {
-                get_f32_attr(node, "size")?
-            } else {
-                0.0
-            };
+            let size = node
+                .entries()
+                .get(0)
+                .map(entry_to_f32)
+                .transpose()?
+                .unwrap_or_default();
 
             let nodes = parse_lhs_rhs_for_operation(node, "intersect")?;
             Ok(Node::Intersect(size, nodes))
         }
         "subtract" => {
-            let size = if node.get("size").is_some() {
-                get_f32_attr(node, "size")?
-            } else {
-                0.0
-            };
+            let size = node
+                .entries()
+                .get(0)
+                .map(entry_to_f32)
+                .transpose()?
+                .unwrap_or_default();
 
             let nodes = parse_lhs_rhs_for_operation(node, "subtract")?;
             Ok(Node::Subtract(size, nodes))
@@ -138,17 +146,17 @@ mod tests {
     #[test]
     fn can_parse_basic_union() {
         let input = r#"
-union {
-    sphere x=0 y=0 z=0 r=1
-    sphere x=1 y=0 z=0 r=2.5
-    sphere x=0.5 y=0 z=0.5 r=2.5
+union 0.4 {
+    sphere 0 0 0 1
+    sphere 1 0 0 2.5
+    sphere 0.5 0 0.5 2.5
 }
 "#;
 
         assert_eq!(
             code_to_node(input).ok(),
             Some(Node::Union(
-                0.0,
+                0.4,
                 vec![
                     Node::Sphere {
                         position: Vec3::new(0.0, 0.0, 0.0),
@@ -170,8 +178,8 @@ union {
     #[test]
     fn fails_on_multiple_root_nodes() {
         let input = r#"
-sphere x=0 y=0 z=0 r=1
-sphere x=1 y=0 z=0 r=2.5
+sphere 0 0 0 1
+sphere 1 0 0 2.5
 "#;
 
         assert_eq!(
@@ -184,7 +192,7 @@ sphere x=1 y=0 z=0 r=2.5
     fn can_parse_rgb() {
         let input = r#"
 rgb 0.2 0.4 0.8 {
-    sphere x=0 y=0 z=0 r=1
+    sphere 0 0 0 1
 }
 "#;
 
@@ -206,8 +214,8 @@ rgb 0.2 0.4 0.8 {
     fn can_parse_intersection() {
         let input = r#"
 intersect {
-    sphere x=0 y=0 z=0 r=1
-    sphere x=1 y=0 z=0 r=2.5
+    sphere 0 0 0 1
+    sphere 1 0 0 2.5
 }
 "#;
 

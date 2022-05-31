@@ -29,18 +29,18 @@ intersect {
     subtract {
         union {
             rgb 255 0 0 {
-                sphere x=-0.5 y=0 z=0 r=1
+                sphere -0.5 0 0 1
             }
             rgb 0 255 0 {
-                sphere x=0 y=0 z=0.5 r=1
+                sphere 0 0 0.5 1
             }
             rgb 0 0 255 {
-                sphere x=0.5 y=0 z=0 r=1
+                sphere 0.5 0 0 1
             }
         }
-        sphere x=0 y=1 z=0 r=0.6
+        sphere 0 1 0 0.6
     }
-    sphere x=0 y=0 z=0 r=1.2
+    sphere 0 0 0 1.2
 }
 "#;
 
