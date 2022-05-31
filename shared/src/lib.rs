@@ -4,7 +4,7 @@ use bevy_math::prelude::*;
 #[derive(Debug, PartialEq)]
 pub enum Node {
     Sphere { position: Vec3, radius: f32 },
-    Union(f32, Box<Node>, Box<Node>),
+    Union(f32, Vec<Node>),
 }
 
 fn get_f32_attr(node: &kdl::KdlNode, key: &str) -> anyhow::Result<f32> {
@@ -35,9 +35,6 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
                 .children()
                 .context("expected children for union")?
                 .nodes();
-            if children.len() != 2 {
-                anyhow::bail!("expected two children for union");
-            }
 
             let size = if node.get("size").is_some() {
                 get_f32_attr(node, "size")?
@@ -47,8 +44,10 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
 
             Ok(Node::Union(
                 size,
-                Box::new(parse_node(&children[0])?),
-                Box::new(parse_node(&children[1])?),
+                children
+                    .iter()
+                    .map(parse_node)
+                    .collect::<Result<Vec<_>, _>>()?,
             ))
         }
         _ => anyhow::bail!("unsupported node type"),
@@ -82,14 +81,16 @@ union {
             code_to_node(input).ok(),
             Some(Node::Union(
                 0.0,
-                Box::new(Node::Sphere {
-                    position: Vec3::new(0.0, 0.0, 0.0),
-                    radius: 1.0
-                }),
-                Box::new(Node::Sphere {
-                    position: Vec3::new(1.0, 0.0, 0.0),
-                    radius: 2.5
-                })
+                vec![
+                    Node::Sphere {
+                        position: Vec3::new(0.0, 0.0, 0.0),
+                        radius: 1.0
+                    },
+                    Node::Sphere {
+                        position: Vec3::new(1.0, 0.0, 0.0),
+                        radius: 2.5
+                    }
+                ]
             ))
         );
     }

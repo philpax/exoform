@@ -26,8 +26,9 @@ pub fn main() {
 
     let description_base = r#"
 union {
-    sphere x=0 y=0 z=0 r=1
-    sphere x=1 y=0 z=0 r=1
+    sphere x=-0.5 y=0 z=0 r=1
+    sphere x=0 y=0 z=0.5 r=1
+    sphere x=0.5 y=0 z=0 r=1
 }
 "#;
 
@@ -57,13 +58,23 @@ union {
 fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
     match node {
         Node::Sphere { position, radius } => graph.sphere(*position, *radius),
-        Node::Union(size, node1, node2) => {
-            let lhs = node_to_saft_node(graph, &node1);
-            let rhs = node_to_saft_node(graph, &node2);
-            if *size == 0.0 {
-                graph.op_union(lhs, rhs)
+        Node::Union(size, nodes) => {
+            let nodes: Vec<_> = nodes.iter().map(|n| node_to_saft_node(graph, n)).collect();
+
+            if nodes.len() == 2 {
+                let (lhs, rhs) = (nodes[0], nodes[1]);
+
+                if *size == 0.0 {
+                    graph.op_union(lhs, rhs)
+                } else {
+                    graph.op_union_smooth(lhs, rhs, *size)
+                }
             } else {
-                graph.op_union_smooth(lhs, rhs, *size)
+                if *size == 0.0 {
+                    graph.op_union_multi(nodes)
+                } else {
+                    graph.op_union_multi_smooth(nodes, *size)
+                }
             }
         }
     }
@@ -94,7 +105,7 @@ fn create_mesh(
             .spawn_bundle(PbrBundle {
                 mesh: meshes.add(mesh),
                 material: materials.add(Color::WHITE.into()),
-                transform: Transform::from_xyz(0.0, 0.5, 0.0),
+                transform: Transform::from_xyz(0.0, 0.0, 0.0),
                 ..default()
             })
             .id(),
