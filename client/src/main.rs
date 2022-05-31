@@ -279,8 +279,38 @@ fn sdf_code_editor(
     egui::SidePanel::right("right_panel")
         .default_width(300.0)
         .show(ctx, |ui| {
-            ui.label("This is where the list of users would go");
+            if let Ok(node) = &parsed_graph.0 {
+                render_egui_tree(ui, node);
+            }
         });
+}
+
+fn render_egui_tree(ui: &mut egui::Ui, node: &Node) {
+    let (name, children) = match node {
+        Node::Sphere { position, radius } => (format!("Sphere({position}, {radius})"), vec![]),
+        Node::Union(size, children) => (format!("Union({size})"), children.iter().collect()),
+        Node::Intersect(size, (lhs, rhs)) => (
+            format!("Intersect({size})"),
+            vec![lhs.as_ref(), rhs.as_ref()],
+        ),
+        Node::Subtract(size, (lhs, rhs)) => (
+            format!("Subtract({size})"),
+            vec![lhs.as_ref(), rhs.as_ref()],
+        ),
+        Node::Rgb(r, g, b, child) => (format!("RGB({r}, {g}, {b})"), vec![child.as_ref()]),
+    };
+
+    if children.is_empty() {
+        ui.label(name);
+    } else {
+        egui::CollapsingHeader::new(name)
+            .default_open(true)
+            .show(ui, |ui| {
+                for child in children {
+                    render_egui_tree(ui, child);
+                }
+            });
+    }
 }
 
 fn keep_rebuilding_mesh(
