@@ -5,11 +5,14 @@ use bevy_math::prelude::*;
 pub enum Node {
     Sphere { position: Vec3, radius: f32 },
     Union(f32, Vec<Node>),
+    Rgb(f32, f32, f32, Box<Node>),
 }
 
 fn get_f32_attr(node: &kdl::KdlNode, key: &str) -> anyhow::Result<f32> {
-    let value = node.get(key).context(format!("expected {}", key))?.value();
+    value_to_f32(node.get(key).context(format!("expected {}", key))?.value())
+}
 
+fn value_to_f32(value: &kdl::KdlValue) -> anyhow::Result<f32> {
     value
         .as_i64()
         .map(|v| v as f32)
@@ -60,6 +63,23 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
 
             let nodes = parse_children_for_operation(node, "union")?;
             Ok(Node::Union(size, nodes))
+        }
+        "rgb" => {
+            if let [r, g, b] = node.entries() {
+                let (r, g, b) = (
+                    value_to_f32(r.value())?,
+                    value_to_f32(g.value())?,
+                    value_to_f32(b.value())?,
+                );
+
+                if let [child] = get_children_for_operation(node, "rgb")? {
+                    Ok(Node::Rgb(r, g, b, Box::new(parse_node(child)?)))
+                } else {
+                    anyhow::bail!("expected one child for rgb")
+                }
+            } else {
+                anyhow::bail!("expected three floats for arguments")
+            }
         }
         _ => anyhow::bail!("unsupported node type"),
     }
@@ -116,6 +136,28 @@ sphere x=1 y=0 z=0 r=2.5
         assert_eq!(
             code_to_node(input).err().unwrap().to_string(),
             "expected only one root node"
+        );
+    }
+
+    #[test]
+    fn can_parse_rgb() {
+        let input = r#"
+rgb 0.2 0.4 0.8 {
+    sphere x=0 y=0 z=0 r=1
+}
+"#;
+
+        assert_eq!(
+            code_to_node(input).ok(),
+            Some(Node::Rgb(
+                0.2,
+                0.4,
+                0.8,
+                Box::new(Node::Sphere {
+                    position: Vec3::new(0.0, 0.0, 0.0),
+                    radius: 1.0
+                })
+            ))
         );
     }
 }

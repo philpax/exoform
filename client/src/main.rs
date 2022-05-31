@@ -26,9 +26,15 @@ pub fn main() {
 
     let description_base = r#"
 union {
-    sphere x=-0.5 y=0 z=0 r=1
-    sphere x=0 y=0 z=0.5 r=1
-    sphere x=0.5 y=0 z=0 r=1
+    rgb 255 0 0 {
+        sphere x=-0.5 y=0 z=0 r=1
+    }
+    rgb 0 255 0 {
+        sphere x=0 y=0 z=0.5 r=1
+    }
+    rgb 0 0 255 {
+        sphere x=0.5 y=0 z=0 r=1
+    }
 }
 "#;
 
@@ -76,6 +82,10 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
                     graph.op_union_multi_smooth(nodes, *size)
                 }
             }
+        }
+        Node::Rgb(r, g, b, node) => {
+            let child = node_to_saft_node(graph, &node);
+            graph.op_rgb(child, [*r, *g, *b])
         }
     }
 }
