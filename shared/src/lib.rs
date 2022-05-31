@@ -5,6 +5,8 @@ use bevy_math::prelude::*;
 pub enum Node {
     Sphere { position: Vec3, radius: f32 },
     Union(f32, Vec<Node>),
+    Intersect(f32, (Box<Node>, Box<Node>)),
+    Subtract(f32, (Box<Node>, Box<Node>)),
     Rgb(f32, f32, f32, Box<Node>),
 }
 
@@ -41,6 +43,20 @@ fn parse_children_for_operation(
     get_children_for_operation(node, operation).and_then(parse_nodes)
 }
 
+fn parse_lhs_rhs_for_operation(
+    node: &kdl::KdlNode,
+    operation: &'static str,
+) -> anyhow::Result<(Box<Node>, Box<Node>)> {
+    let children = get_children_for_operation(node, operation)?;
+    if children.len() != 2 {
+        anyhow::bail!("expected two children for {operation}");
+    }
+    Ok((
+        Box::new(parse_node(&children[0])?),
+        Box::new(parse_node(&children[1])?),
+    ))
+}
+
 fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
     match node.name().value() {
         "sphere" => {
@@ -63,6 +79,26 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
 
             let nodes = parse_children_for_operation(node, "union")?;
             Ok(Node::Union(size, nodes))
+        }
+        "intersect" => {
+            let size = if node.get("size").is_some() {
+                get_f32_attr(node, "size")?
+            } else {
+                0.0
+            };
+
+            let nodes = parse_lhs_rhs_for_operation(node, "intersect")?;
+            Ok(Node::Intersect(size, nodes))
+        }
+        "subtract" => {
+            let size = if node.get("size").is_some() {
+                get_f32_attr(node, "size")?
+            } else {
+                0.0
+            };
+
+            let nodes = parse_lhs_rhs_for_operation(node, "subtract")?;
+            Ok(Node::Subtract(size, nodes))
         }
         "rgb" => {
             if let [r, g, b] = node.entries() {
@@ -105,6 +141,7 @@ mod tests {
 union {
     sphere x=0 y=0 z=0 r=1
     sphere x=1 y=0 z=0 r=2.5
+    sphere x=0.5 y=0 z=0.5 r=2.5
 }
 "#;
 
@@ -119,6 +156,10 @@ union {
                     },
                     Node::Sphere {
                         position: Vec3::new(1.0, 0.0, 0.0),
+                        radius: 2.5
+                    },
+                    Node::Sphere {
+                        position: Vec3::new(0.5, 0.0, 0.5),
                         radius: 2.5
                     }
                 ]
@@ -157,6 +198,33 @@ rgb 0.2 0.4 0.8 {
                     position: Vec3::new(0.0, 0.0, 0.0),
                     radius: 1.0
                 })
+            ))
+        );
+    }
+
+    #[test]
+    fn can_parse_intersection() {
+        let input = r#"
+intersect {
+    sphere x=0 y=0 z=0 r=1
+    sphere x=1 y=0 z=0 r=2.5
+}
+"#;
+
+        assert_eq!(
+            code_to_node(input).ok(),
+            Some(Node::Intersect(
+                0.0,
+                (
+                    Box::new(Node::Sphere {
+                        position: Vec3::new(0.0, 0.0, 0.0),
+                        radius: 1.0
+                    }),
+                    Box::new(Node::Sphere {
+                        position: Vec3::new(1.0, 0.0, 0.0),
+                        radius: 2.5
+                    }),
+                )
             ))
         );
     }

@@ -25,16 +25,22 @@ pub fn main() {
     console_error_panic_hook::set_once();
 
     let description_base = r#"
-union {
-    rgb 255 0 0 {
-        sphere x=-0.5 y=0 z=0 r=1
+intersect {
+    subtract {
+        union {
+            rgb 255 0 0 {
+                sphere x=-0.5 y=0 z=0 r=1
+            }
+            rgb 0 255 0 {
+                sphere x=0 y=0 z=0.5 r=1
+            }
+            rgb 0 0 255 {
+                sphere x=0.5 y=0 z=0 r=1
+            }
+        }
+        sphere x=0 y=1 z=0 r=0.6
     }
-    rgb 0 255 0 {
-        sphere x=0 y=0 z=0.5 r=1
-    }
-    rgb 0 0 255 {
-        sphere x=0.5 y=0 z=0 r=1
-    }
+    sphere x=0 y=0 z=0 r=1.2
 }
 "#;
 
@@ -65,11 +71,9 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
     match node {
         Node::Sphere { position, radius } => graph.sphere(*position, *radius),
         Node::Union(size, nodes) => {
-            let nodes: Vec<_> = nodes.iter().map(|n| node_to_saft_node(graph, n)).collect();
-
+            let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.len() == 2 {
                 let (lhs, rhs) = (nodes[0], nodes[1]);
-
                 if *size == 0.0 {
                     graph.op_union(lhs, rhs)
                 } else {
@@ -83,11 +87,41 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
                 }
             }
         }
+        Node::Intersect(size, nodes) => {
+            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes);
+            if *size == 0.0 {
+                graph.op_intersect(lhs, rhs)
+            } else {
+                graph.op_intersect_smooth(lhs, rhs, *size)
+            }
+        }
+        Node::Subtract(size, nodes) => {
+            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes);
+            if *size == 0.0 {
+                graph.op_subtract(lhs, rhs)
+            } else {
+                graph.op_subtract_smooth(lhs, rhs, *size)
+            }
+        }
         Node::Rgb(r, g, b, node) => {
             let child = node_to_saft_node(graph, &node);
             graph.op_rgb(child, [*r, *g, *b])
         }
     }
+}
+
+fn nodes_to_saft_nodes(graph: &mut saft::Graph, nodes: &[Node]) -> Vec<saft::NodeId> {
+    nodes.iter().map(|n| node_to_saft_node(graph, n)).collect()
+}
+
+fn lhs_rhs_to_saft_nodes(
+    graph: &mut saft::Graph,
+    nodes: &(Box<Node>, Box<Node>),
+) -> (saft::NodeId, saft::NodeId) {
+    (
+        node_to_saft_node(graph, &nodes.0),
+        node_to_saft_node(graph, &nodes.1),
+    )
 }
 
 fn node_to_saft(root: &Node) -> (saft::Graph, saft::NodeId) {
