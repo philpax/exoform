@@ -17,6 +17,27 @@ fn get_f32_attr(node: &kdl::KdlNode, key: &str) -> anyhow::Result<f32> {
         .context("expected float")
 }
 
+fn get_children_for_operation<'a>(
+    node: &'a kdl::KdlNode,
+    operation: &'static str,
+) -> anyhow::Result<&'a [kdl::KdlNode]> {
+    Ok(node
+        .children()
+        .context(format!("expected children for {operation}"))?
+        .nodes())
+}
+
+fn parse_nodes(nodes: &[kdl::KdlNode]) -> anyhow::Result<Vec<Node>> {
+    nodes.iter().map(parse_node).collect::<Result<Vec<_>, _>>()
+}
+
+fn parse_children_for_operation(
+    node: &kdl::KdlNode,
+    operation: &'static str,
+) -> anyhow::Result<Vec<Node>> {
+    get_children_for_operation(node, operation).and_then(parse_nodes)
+}
+
 fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
     match node.name().value() {
         "sphere" => {
@@ -31,24 +52,14 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
             })
         }
         "union" => {
-            let children = node
-                .children()
-                .context("expected children for union")?
-                .nodes();
-
             let size = if node.get("size").is_some() {
                 get_f32_attr(node, "size")?
             } else {
                 0.0
             };
 
-            Ok(Node::Union(
-                size,
-                children
-                    .iter()
-                    .map(parse_node)
-                    .collect::<Result<Vec<_>, _>>()?,
-            ))
+            let nodes = parse_children_for_operation(node, "union")?;
+            Ok(Node::Union(size, nodes))
         }
         _ => anyhow::bail!("unsupported node type"),
     }
