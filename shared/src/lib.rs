@@ -12,6 +12,10 @@ pub enum Node {
         half_height: f32,
         rounding_radius: f32,
     },
+    Torus {
+        big_r: f32,
+        small_r: f32,
+    },
     Union(f32, Vec<Node>),
     Intersect(f32, (Box<Node>, Box<Node>)),
     Subtract(f32, (Box<Node>, Box<Node>)),
@@ -98,6 +102,21 @@ fn parse_node(node: &kdl::KdlNode) -> anyhow::Result<Node> {
                 half_height,
                 rounding_radius,
             })
+        }
+        "torus" => {
+            let entries = node.entries();
+            if entries.len() != 2 {
+                anyhow::bail!("expected big_r small_r for torus");
+            }
+
+            let big_r = entry_to_f32(&entries[0])?;
+            let small_r = entry_to_f32(&entries[1])?;
+
+            if big_r < small_r {
+                anyhow::bail!("expected big_r to be larger than small_r for torus");
+            }
+
+            Ok(Node::Torus { big_r, small_r })
         }
         "union" => {
             let size = node
@@ -270,6 +289,18 @@ intersect {
                 cylinder_radius: 0.5,
                 half_height: 1.0,
                 rounding_radius: 0.1,
+            })
+        )
+    }
+
+    #[test]
+    fn can_parse_torus() {
+        let input = "torus 2.0 1.0";
+        assert_eq!(
+            code_to_node(input).ok(),
+            Some(Node::Torus {
+                big_r: 2.0,
+                small_r: 1.0,
             })
         )
     }

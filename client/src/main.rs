@@ -25,25 +25,29 @@ pub fn main() {
     console_error_panic_hook::set_once();
 
     let description_base = r#"
-subtract {
-    intersect {
-        subtract 0.2 {
-            union 0.4 {
-                rgb 255 0 0 {
-                    sphere -0.5 0 0 1
+union {
+    subtract {
+        intersect {
+            subtract 0.2 {
+                union 0.4 {
+                    rgb 255 0 0 {
+                        sphere -0.5 0 0 1
+                    }
+                    rgb 0 255 0 {
+                        sphere 0 0 0.5 1
+                    }
+                    rgb 0 0 255 {
+                        sphere 0.5 0 0 1
+                    }
                 }
-                rgb 0 255 0 {
-                    sphere 0 0 0.5 1
-                }
-                rgb 0 0 255 {
-                    sphere 0.5 0 0 1
-                }
+                sphere 0 1 0 0.6
             }
-            sphere 0 1 0 0.6
+            sphere 0 0 0 1.2
         }
-        sphere 0 0 0 1.2
+        cylinder 0.5 2.0 0
     }
-    cylinder 0.5 2.0 0
+
+    torus 2.0 0.5
 }
 "#;
 
@@ -78,6 +82,7 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
             half_height,
             rounding_radius,
         } => graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius),
+        Node::Torus { big_r, small_r } => graph.torus(*big_r, *small_r),
         Node::Union(size, nodes) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.len() == 2 {
@@ -304,6 +309,8 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &Node) {
             format!("Cylinder({cylinder_radius}, {half_height}, {rounding_radius})"),
             vec![],
         ),
+        Node::Torus { big_r, small_r } => (format!("Torus({big_r}, {small_r})"), vec![]),
+
         Node::Union(size, children) => (format!("Union({size})"), children.iter().collect()),
         Node::Intersect(size, (lhs, rhs)) => (
             format!("Intersect({size})"),
@@ -313,6 +320,7 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &Node) {
             format!("Subtract({size})"),
             vec![lhs.as_ref(), rhs.as_ref()],
         ),
+
         Node::Rgb(r, g, b, child) => (format!("RGB({r}, {g}, {b})"), vec![child.as_ref()]),
     };
 
