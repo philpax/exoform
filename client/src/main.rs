@@ -102,22 +102,28 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<saft::NodeI
                 Some(graph.op_union_multi_smooth(nodes, *size))
             }
         }
-        Node::Intersect(size, nodes) => {
-            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes)?;
-            if *size == 0.0 {
-                Some(graph.op_intersect(lhs, rhs))
-            } else {
-                Some(graph.op_intersect_smooth(lhs, rhs, *size))
+        Node::Intersect(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
+            (Some(lhs), Some(rhs)) => {
+                if *size == 0.0 {
+                    Some(graph.op_intersect(lhs, rhs))
+                } else {
+                    Some(graph.op_intersect_smooth(lhs, rhs, *size))
+                }
             }
-        }
-        Node::Subtract(size, nodes) => {
-            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes)?;
-            if *size == 0.0 {
-                Some(graph.op_subtract(lhs, rhs))
-            } else {
-                Some(graph.op_subtract_smooth(lhs, rhs, *size))
+            (Some(lhs), None) => Some(lhs),
+            _ => None,
+        },
+        Node::Subtract(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
+            (Some(lhs), Some(rhs)) => {
+                if *size == 0.0 {
+                    Some(graph.op_subtract(lhs, rhs))
+                } else {
+                    Some(graph.op_subtract_smooth(lhs, rhs, *size))
+                }
             }
-        }
+            (Some(lhs), None) => Some(lhs),
+            _ => None,
+        },
         Node::Rgb(r, g, b, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph.op_rgb(child, [*r, *g, *b]))
@@ -135,11 +141,17 @@ fn nodes_to_saft_nodes(graph: &mut saft::Graph, nodes: &[Node]) -> Vec<saft::Nod
 fn lhs_rhs_to_saft_nodes(
     graph: &mut saft::Graph,
     nodes: &(Option<Box<Node>>, Option<Box<Node>>),
-) -> Option<(saft::NodeId, saft::NodeId)> {
-    Some((
-        node_to_saft_node(graph, nodes.0.as_ref()?)?,
-        node_to_saft_node(graph, nodes.1.as_ref()?)?,
-    ))
+) -> (Option<saft::NodeId>, Option<saft::NodeId>) {
+    (
+        nodes
+            .0
+            .as_ref()
+            .and_then(|node| node_to_saft_node(graph, node)),
+        nodes
+            .1
+            .as_ref()
+            .and_then(|node| node_to_saft_node(graph, node)),
+    )
 }
 
 fn node_to_saft(root: &Node) -> Option<(saft::Graph, saft::NodeId)> {
