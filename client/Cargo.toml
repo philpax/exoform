@@ -12,7 +12,6 @@ bevy = "0.7"
 bevy_egui = "0.14.0"
 bevy_web_fullscreen = {git = "https://github.com/oscrim/bevy_web_fullscreen.git"}
 bimap = "0.6.2"
-egui_node_graph = {git = "https://github.com/philpax/egui_node_graph.git", branch = "active"}
 saft = "0.30.0"
 smooth-bevy-cameras = "0.4.0"
 

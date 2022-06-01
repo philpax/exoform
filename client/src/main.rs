@@ -8,54 +8,96 @@ use smooth_bevy_cameras::{
     LookTransformPlugin,
 };
 
-use shared::{code_to_node, Node};
-
-#[derive(Debug, PartialEq)]
-pub struct GraphDescription(String);
+use shared::Node;
 
 #[derive(Debug)]
-pub struct ParsedGraph(anyhow::Result<Node>);
+pub struct Graph(Node);
 
 pub struct CurrentEntity(Option<Entity>);
 
 pub struct RebuildTimer(Timer);
 
+fn build_sample_graph() -> Node {
+    use Node::*;
+    Union(
+        0.0,
+        vec![
+            Subtract(
+                0.0,
+                (
+                    Box::new(Intersect(
+                        0.0,
+                        (
+                            Box::new(Subtract(
+                                0.2,
+                                (
+                                    Box::new(Union(
+                                        0.4,
+                                        vec![
+                                            Rgb(
+                                                255.0,
+                                                0.0,
+                                                0.0,
+                                                Box::new(Sphere {
+                                                    position: Vec3::new(-0.5, 0.0, 0.0),
+                                                    radius: 1.0,
+                                                }),
+                                            ),
+                                            Rgb(
+                                                0.0,
+                                                255.0,
+                                                0.0,
+                                                Box::new(Sphere {
+                                                    position: Vec3::new(0.0, 0.0, 0.5),
+                                                    radius: 1.0,
+                                                }),
+                                            ),
+                                            Rgb(
+                                                0.0,
+                                                0.0,
+                                                255.0,
+                                                Box::new(Sphere {
+                                                    position: Vec3::new(0.5, 0.0, 0.0),
+                                                    radius: 1.0,
+                                                }),
+                                            ),
+                                        ],
+                                    )),
+                                    Box::new(Sphere {
+                                        position: Vec3::new(0.0, 1.0, 0.0),
+                                        radius: 0.6,
+                                    }),
+                                ),
+                            )),
+                            Box::new(Sphere {
+                                position: Vec3::new(0.0, 0.0, 0.0),
+                                radius: 1.2,
+                            }),
+                        ),
+                    )),
+                    Box::new(RoundedCylinder {
+                        cylinder_radius: 0.5,
+                        half_height: 2.0,
+                        rounding_radius: 0.0,
+                    }),
+                ),
+            ),
+            Torus {
+                big_r: 2.0,
+                small_r: 0.5,
+            },
+        ],
+    )
+}
+
 pub fn main() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 
-    let description_base = r#"
-union {
-    subtract {
-        intersect {
-            subtract 0.2 {
-                union 0.4 {
-                    rgb 255 0 0 {
-                        sphere -0.5 0 0 1
-                    }
-                    rgb 0 255 0 {
-                        sphere 0 0 0.5 1
-                    }
-                    rgb 0 0 255 {
-                        sphere 0.5 0 0 1
-                    }
-                }
-                sphere 0 1 0 0.6
-            }
-            sphere 0 0 0 1.2
-        }
-        cylinder 0.5 2.0 0
-    }
-
-    torus 2.0 0.5
-}
-"#;
-
     App::new()
         .insert_resource(Msaa { samples: 4 })
         .insert_resource(bevy::winit::WinitSettings::desktop_app())
-        .insert_resource(GraphDescription(description_base.trim().to_string()))
-        .insert_resource(ParsedGraph(Err(anyhow::anyhow!("unparsed graph"))))
+        .insert_resource(Graph(build_sample_graph()))
         .insert_resource(CurrentEntity(None))
         .insert_resource(RebuildTimer(Timer::new(
             std::time::Duration::from_secs(1),
@@ -68,7 +110,6 @@ union {
         .add_plugin(EguiPlugin)
         .add_startup_system(setup)
         .add_system(input_map)
-        .add_system(parse_code)
         .add_system(sdf_code_editor)
         .add_system(keep_rebuilding_mesh)
         .run();
@@ -92,12 +133,10 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
                 } else {
                     graph.op_union_smooth(lhs, rhs, *size)
                 }
+            } else if *size == 0.0 {
+                graph.op_union_multi(nodes)
             } else {
-                if *size == 0.0 {
-                    graph.op_union_multi(nodes)
-                } else {
-                    graph.op_union_multi_smooth(nodes, *size)
-                }
+                graph.op_union_multi_smooth(nodes, *size)
             }
         }
         Node::Intersect(size, nodes) => {
@@ -117,7 +156,7 @@ fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
             }
         }
         Node::Rgb(r, g, b, node) => {
-            let child = node_to_saft_node(graph, &node);
+            let child = node_to_saft_node(graph, node);
             graph.op_rgb(child, [*r, *g, *b])
         }
     }
@@ -253,88 +292,133 @@ pub fn input_map(
     }
 }
 
-fn parse_code(mut parsed_graph: ResMut<ParsedGraph>, graph_description: Res<GraphDescription>) {
-    *parsed_graph = ParsedGraph(code_to_node(&graph_description.0));
-}
-
-fn sdf_code_editor(
-    mut egui_context: ResMut<EguiContext>,
-    mut graph_description: ResMut<GraphDescription>,
-    parsed_graph: Res<ParsedGraph>,
-) {
+fn sdf_code_editor(mut egui_context: ResMut<EguiContext>, mut graph: ResMut<Graph>) {
     let ctx = egui_context.ctx_mut();
-
     egui::SidePanel::left("left_panel")
-        .default_width(300.0)
+        .default_width(400.0)
         .show(ctx, |ui| {
-            egui::TopBottomPanel::bottom("bottom_panel")
-                .resizable(false)
-                .show_inside(ui, |ui| {
-                    if let Err(err) = &parsed_graph.0 {
-                        ui.label(err.to_string());
-                    }
-                });
-
-            egui::CentralPanel::default().show_inside(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.add_sized(
-                        ui.available_size(),
-                        egui::TextEdit::multiline(&mut graph_description.0)
-                            .font(egui::TextStyle::Monospace) // for cursor height
-                            .code_editor()
-                            .lock_focus(true)
-                            .desired_width(f32::INFINITY),
-                    );
-                });
-            });
-        });
-
-    egui::SidePanel::right("right_panel")
-        .default_width(300.0)
-        .show(ctx, |ui| {
-            if let Ok(node) = &parsed_graph.0 {
-                render_egui_tree(ui, node);
-            }
+            render_egui_tree(ui, &mut graph.0, 0);
         });
 }
 
-fn render_egui_tree(ui: &mut egui::Ui, node: &Node) {
-    let (name, children) = match node {
-        Node::Sphere { position, radius } => (format!("Sphere({position}, {radius})"), vec![]),
-        Node::RoundedCylinder {
-            cylinder_radius,
-            half_height,
-            rounding_radius,
-        } => (
-            format!("Cylinder({cylinder_radius}, {half_height}, {rounding_radius})"),
-            vec![],
-        ),
-        Node::Torus { big_r, small_r } => (format!("Torus({big_r}, {small_r})"), vec![]),
-
-        Node::Union(size, children) => (format!("Union({size})"), children.iter().collect()),
-        Node::Intersect(size, (lhs, rhs)) => (
-            format!("Intersect({size})"),
-            vec![lhs.as_ref(), rhs.as_ref()],
-        ),
-        Node::Subtract(size, (lhs, rhs)) => (
-            format!("Subtract({size})"),
-            vec![lhs.as_ref(), rhs.as_ref()],
-        ),
-
-        Node::Rgb(r, g, b, child) => (format!("RGB({r}, {g}, {b})"), vec![child.as_ref()]),
+fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {
+    let name = match node {
+        Node::Sphere { .. } => "Sphere",
+        Node::RoundedCylinder { .. } => "Cylinder",
+        Node::Torus { .. } => "Torus",
+        Node::Union(..) => "Union",
+        Node::Intersect(..) => "Intersect",
+        Node::Subtract(..) => "Subtract",
+        Node::Rgb(..) => "Rgb",
     };
 
-    if children.is_empty() {
-        ui.label(name);
-    } else {
+    fn dragger(value: &mut f32) -> egui::widgets::DragValue {
+        egui::widgets::DragValue::new(value)
+            .fixed_decimals(2)
+            .speed(0.01)
+    }
+
+    fn vec3(ui: &mut egui::Ui, value: &mut Vec3) {
+        ui.horizontal(|ui| {
+            ui.add(dragger(&mut value.x));
+            ui.add(dragger(&mut value.y));
+            ui.add(dragger(&mut value.z));
+        });
+    }
+
+    fn grid(ui: &mut egui::Ui, f: impl FnMut(&mut egui::Ui)) {
+        egui::Grid::new("rows")
+            .num_columns(2)
+            .spacing([40.0, 4.0])
+            .striped(true)
+            .show(ui, f);
+    }
+
+    ui.push_id(index, |ui| {
         egui::CollapsingHeader::new(name)
             .default_open(true)
-            .show(ui, |ui| {
-                for child in children {
-                    render_egui_tree(ui, child);
+            .show(ui, |ui| match node {
+                Node::Sphere { position, radius } => {
+                    grid(ui, |ui| {
+                        ui.label("Position");
+                        vec3(ui, position);
+                        ui.end_row();
+
+                        ui.label("Radius");
+                        ui.add(dragger(radius));
+                        ui.end_row();
+                    });
+                }
+                Node::RoundedCylinder {
+                    cylinder_radius,
+                    half_height,
+                    rounding_radius,
+                } => {
+                    grid(ui, |ui| {
+                        ui.label("Cylinder radius");
+                        ui.add(dragger(cylinder_radius));
+                        ui.end_row();
+
+                        ui.label("Half height");
+                        ui.add(dragger(half_height));
+                        ui.end_row();
+
+                        ui.label("Rounding radius");
+                        ui.add(dragger(rounding_radius));
+                        ui.end_row();
+                    });
+                }
+                Node::Torus { big_r, small_r } => {
+                    grid(ui, |ui| {
+                        ui.label("Big radius");
+                        ui.add(dragger(big_r));
+                        ui.end_row();
+
+                        ui.label("small height");
+                        ui.add(dragger(small_r));
+                        ui.end_row();
+                    });
+                }
+                Node::Union(factor, children) => {
+                    grid(ui, |ui| {
+                        ui.label("Factor");
+                        ui.add(dragger(factor).clamp_range(0.0..=1.0));
+                        ui.end_row();
+                    });
+                    for (index, child) in children.iter_mut().enumerate() {
+                        render_egui_tree(ui, child, index);
+                    }
+                }
+                Node::Intersect(factor, (lhs, rhs)) => {
+                    grid(ui, |ui| {
+                        ui.label("Factor");
+                        ui.add(dragger(factor).clamp_range(0.0..=1.0));
+                        ui.end_row();
+                    });
+                    render_egui_tree(ui, lhs, 0);
+                    render_egui_tree(ui, rhs, 1);
+                }
+                Node::Subtract(factor, (lhs, rhs)) => {
+                    grid(ui, |ui| {
+                        ui.label("Factor");
+                        ui.add(dragger(factor).clamp_range(0.0..=1.0));
+                        ui.end_row();
+                    });
+                    render_egui_tree(ui, lhs, 0);
+                    render_egui_tree(ui, rhs, 1);
+                }
+                Node::Rgb(r, g, b, child) => {
+                    grid(ui, |ui| {
+                        ui.label("Colour");
+                        let mut rgb = [*r, *g, *b];
+                        egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
+                        [*r, *g, *b] = rgb;
+                        ui.end_row();
+                    });
+                    render_egui_tree(ui, child, 0);
                 }
             });
-    }
+    });
 }
 
 fn keep_rebuilding_mesh(
@@ -343,19 +427,17 @@ fn keep_rebuilding_mesh(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut current_entity: ResMut<CurrentEntity>,
     mut rebuild_timer: ResMut<RebuildTimer>,
-    parsed_graph: Res<ParsedGraph>,
+    graph: Res<Graph>,
     time: Res<Time>,
 ) {
     rebuild_timer.0.tick(time.delta());
-    if let Ok(root) = &parsed_graph.0 {
-        if rebuild_timer.0.finished() {
-            create_mesh(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                &mut current_entity,
-                root,
-            );
-        }
+    if rebuild_timer.0.finished() {
+        create_mesh(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut current_entity,
+            &graph.0,
+        );
     }
 }
