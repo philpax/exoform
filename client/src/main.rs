@@ -334,6 +334,14 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {
             .show(ui, f);
     }
 
+    fn factor_slider(ui: &mut egui::Ui, factor: &mut f32) {
+        grid(ui, |ui| {
+            ui.label("Factor");
+            ui.add(egui::widgets::Slider::new(factor, 0.0..=1.0));
+            ui.end_row();
+        });
+    }
+
     ui.push_id(index, |ui| {
         egui::CollapsingHeader::new(name)
             .default_open(true)
@@ -374,36 +382,24 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {
                         ui.add(dragger(big_r));
                         ui.end_row();
 
-                        ui.label("small height");
+                        ui.label("Small radius");
                         ui.add(dragger(small_r));
                         ui.end_row();
                     });
                 }
                 Node::Union(factor, children) => {
-                    grid(ui, |ui| {
-                        ui.label("Factor");
-                        ui.add(dragger(factor).clamp_range(0.0..=1.0));
-                        ui.end_row();
-                    });
+                    factor_slider(ui, factor);
                     for (index, child) in children.iter_mut().enumerate() {
                         render_egui_tree(ui, child, index);
                     }
                 }
                 Node::Intersect(factor, (lhs, rhs)) => {
-                    grid(ui, |ui| {
-                        ui.label("Factor");
-                        ui.add(dragger(factor).clamp_range(0.0..=1.0));
-                        ui.end_row();
-                    });
+                    factor_slider(ui, factor);
                     render_egui_tree(ui, lhs, 0);
                     render_egui_tree(ui, rhs, 1);
                 }
                 Node::Subtract(factor, (lhs, rhs)) => {
-                    grid(ui, |ui| {
-                        ui.label("Factor");
-                        ui.add(dragger(factor).clamp_range(0.0..=1.0));
-                        ui.end_row();
-                    });
+                    factor_slider(ui, factor);
                     render_egui_tree(ui, lhs, 0);
                     render_egui_tree(ui, rhs, 1);
                 }
