@@ -149,6 +149,7 @@ pub(crate) fn render_egui_tree(
                             ui.end_row();
                         });
                     }
+
                     Node::Union(factor, children) => {
                         factor_slider(ui, factor);
                         let mut to_remove = vec![];
@@ -177,12 +178,46 @@ pub(crate) fn render_egui_tree(
                         render_removable_tree(ui, lhs, 0, depth);
                         render_removable_tree(ui, rhs, 1, depth);
                     }
+
                     Node::Rgb(r, g, b, child) => {
                         grid(ui, |ui| {
                             ui.label("Colour");
                             let mut rgb = [*r, *g, *b];
                             egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
                             [*r, *g, *b] = rgb;
+                            ui.end_row();
+                        });
+                        render_removable_tree(ui, child, 0, depth);
+                    }
+
+                    Node::Translate(position, child) => {
+                        grid(ui, |ui| {
+                            ui.label("Position");
+                            vec3(ui, position);
+                            ui.end_row();
+                        });
+                        render_removable_tree(ui, child, 0, depth);
+                    }
+                    Node::Rotate(rotation, child) => {
+                        grid(ui, |ui| {
+                            ui.label("Rotation (YPR)");
+                            let (mut yaw, mut pitch, mut roll) =
+                                rotation.to_euler(glam::EulerRot::YXZ);
+                            ui.horizontal(|ui| {
+                                ui.drag_angle(&mut yaw);
+                                ui.drag_angle(&mut pitch);
+                                ui.drag_angle(&mut roll);
+                            });
+                            *rotation =
+                                glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, roll);
+                            ui.end_row();
+                        });
+                        render_removable_tree(ui, child, 0, depth);
+                    }
+                    Node::Scale(scale, child) => {
+                        grid(ui, |ui| {
+                            ui.label("Scale");
+                            ui.add(dragger(scale));
                             ui.end_row();
                         });
                         render_removable_tree(ui, child, 0, depth);
@@ -214,6 +249,7 @@ pub(crate) fn render_add_button(ui: &mut egui::Ui, depth: usize) -> Option<Node>
                 shared::NodeCategory::Primitive => egui::Color32::from_rgb(78, 205, 196),
                 shared::NodeCategory::Operation => egui::Color32::from_rgb(199, 244, 100),
                 shared::NodeCategory::Metadata => egui::Color32::from_rgb(255, 107, 107),
+                shared::NodeCategory::Transform => egui::Color32::from_rgb(238, 130, 238),
             };
             if ui
                 .add(egui::widgets::Button::new(

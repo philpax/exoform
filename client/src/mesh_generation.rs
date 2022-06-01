@@ -11,6 +11,7 @@ pub(crate) fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<
             rounding_radius,
         } => Some(graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
         Node::Torus { big_r, small_r } => Some(graph.torus(*big_r, *small_r)),
+
         Node::Union(size, nodes) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.is_empty() {
@@ -51,9 +52,23 @@ pub(crate) fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<
             (Some(lhs), None) => Some(lhs),
             _ => None,
         },
+
         Node::Rgb(r, g, b, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph.op_rgb(child, [*r, *g, *b]))
+        }
+
+        Node::Translate(position, node) => {
+            let child = node_to_saft_node(graph, node.as_deref()?)?;
+            Some(graph.op_translate(child, position.to_array()))
+        }
+        Node::Rotate(rotation, node) => {
+            let child = node_to_saft_node(graph, node.as_deref()?)?;
+            Some(graph.op_rotate(child, glam::Quat::from_array(rotation.to_array())))
+        }
+        Node::Scale(scale, node) => {
+            let child = node_to_saft_node(graph, node.as_deref()?)?;
+            Some(graph.op_scale(child, *scale))
         }
     }
 }
@@ -98,6 +113,9 @@ pub(crate) fn create_mesh(
         Some(vals) => vals,
         None => return,
     };
+    if graph.bounding_box(root).volume() == 0.0 {
+        return;
+    }
     let mesh = sdf_to_bevy_mesh(graph, root);
 
     if let Some(entity) = current_entity.0 {

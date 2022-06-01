@@ -21,29 +21,7 @@ struct RebuildTimer(Timer);
 
 fn build_sample_graph() -> Node {
     use Node::*;
-    Union(
-        0.05,
-        vec![
-            Subtract(
-                0.7,
-                (
-                    Some(Box::new(Sphere {
-                        position: glam::Vec3::ZERO,
-                        radius: 1.0,
-                    })),
-                    Some(Box::new(Sphere {
-                        position: glam::Vec3::new(0.0, 1.0, 0.0),
-                        radius: 0.4,
-                    })),
-                ),
-            ),
-            Cylinder {
-                cylinder_radius: 0.05,
-                half_height: 0.9,
-                rounding_radius: 0.01,
-            },
-        ],
-    )
+    Union(0.0, vec![])
 }
 
 pub fn main() {

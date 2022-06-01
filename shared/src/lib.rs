@@ -6,6 +6,7 @@ pub enum NodeCategory {
     Primitive,
     Operation,
     Metadata,
+    Transform,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -23,10 +24,16 @@ pub enum Node {
         big_r: f32,
         small_r: f32,
     },
+
     Union(f32, Vec<Node>),
     Intersect(f32, (Option<Box<Node>>, Option<Box<Node>>)),
     Subtract(f32, (Option<Box<Node>>, Option<Box<Node>>)),
+
     Rgb(f32, f32, f32, Option<Box<Node>>),
+
+    Translate(Vec3, Option<Box<Node>>),
+    Rotate(Quat, Option<Box<Node>>),
+    Scale(f32, Option<Box<Node>>),
 }
 impl Node {
     pub fn name(&self) -> &str {
@@ -34,10 +41,16 @@ impl Node {
             Node::Sphere { .. } => "Sphere",
             Node::Cylinder { .. } => "Cylinder",
             Node::Torus { .. } => "Torus",
+
             Node::Union(..) => "Union",
             Node::Intersect(..) => "Intersect",
             Node::Subtract(..) => "Subtract",
+
             Node::Rgb(..) => "Rgb",
+
+            Node::Translate(..) => "Translate",
+            Node::Rotate(..) => "Rotate",
+            Node::Scale(..) => "Scale",
         }
     }
 
@@ -46,10 +59,16 @@ impl Node {
             Node::Sphere { .. } => NodeCategory::Primitive,
             Node::Cylinder { .. } => NodeCategory::Primitive,
             Node::Torus { .. } => NodeCategory::Primitive,
+
             Node::Union(..) => NodeCategory::Operation,
             Node::Intersect(..) => NodeCategory::Operation,
             Node::Subtract(..) => NodeCategory::Operation,
+
             Node::Rgb(..) => NodeCategory::Metadata,
+
+            Node::Translate(..) => NodeCategory::Transform,
+            Node::Rotate(..) => NodeCategory::Transform,
+            Node::Scale(..) => NodeCategory::Transform,
         }
     }
 }
@@ -68,10 +87,16 @@ pub const NODE_DEFAULTS: &[Node] = &[
         big_r: 0.0,
         small_r: 0.0,
     },
+    //
     Node::Union(0.0, vec![]),
     Node::Intersect(0.0, (None, None)),
     Node::Subtract(0.0, (None, None)),
+    //
     Node::Rgb(1.0, 1.0, 1.0, None),
+    //
+    Node::Translate(Vec3::ZERO, None),
+    Node::Rotate(Quat::IDENTITY, None),
+    Node::Scale(1.0, None),
 ];
 
 impl ToString for Node {
