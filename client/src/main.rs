@@ -114,6 +114,7 @@ pub fn main() {
 
     app.add_plugin(EguiPlugin)
         .add_startup_system(setup)
+        .add_startup_system(rebuild_mesh)
         .add_system(sdf_code_editor)
         .add_system(keep_rebuilding_mesh)
         .add_system(pan_orbit_camera)
@@ -535,23 +536,33 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {
     });
 }
 
-fn keep_rebuilding_mesh(
+fn rebuild_mesh(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut current_entity: ResMut<CurrentEntity>,
+    graph: Res<Graph>,
+) {
+    create_mesh(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut current_entity,
+        &graph.0,
+    );
+}
+
+fn keep_rebuilding_mesh(
+    commands: Commands,
+    meshes: ResMut<Assets<Mesh>>,
+    materials: ResMut<Assets<StandardMaterial>>,
+    current_entity: ResMut<CurrentEntity>,
     mut rebuild_timer: ResMut<RebuildTimer>,
     graph: Res<Graph>,
     time: Res<Time>,
 ) {
     rebuild_timer.0.tick(time.delta());
     if rebuild_timer.0.finished() {
-        create_mesh(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut current_entity,
-            &graph.0,
-        );
+        rebuild_mesh(commands, meshes, materials, current_entity, graph);
     }
 }
