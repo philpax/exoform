@@ -98,7 +98,7 @@ pub fn main() {
         .insert_resource(Graph(build_sample_graph()))
         .insert_resource(CurrentEntity(None))
         .insert_resource(RebuildTimer(Timer::new(
-            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs_f32(0.2),
             true,
         )))
         .insert_resource(WindowDescriptor {
