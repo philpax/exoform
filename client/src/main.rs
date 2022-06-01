@@ -413,14 +413,14 @@ fn sdf_code_editor(
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
-            render_egui_tree(ui, &mut graph.0, 0);
+            render_egui_tree(ui, &mut graph.0, 0, 0);
         })
         .response
         .rect
         .width();
 }
 
-fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {
+fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usize) {
     let name = match node {
         Node::Sphere { .. } => "Sphere",
         Node::RoundedCylinder { .. } => "Cylinder",
@@ -462,76 +462,84 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {
     }
 
     ui.push_id(index, |ui| {
-        egui::CollapsingHeader::new(name)
-            .default_open(true)
-            .show(ui, |ui| match node {
-                Node::Sphere { position, radius } => {
-                    grid(ui, |ui| {
-                        ui.label("Position");
-                        vec3(ui, position);
-                        ui.end_row();
+        egui::Frame::none()
+            .stroke(egui::Stroke::new(
+                1.0,
+                egui::color::Hsva::new((depth as f32 / 4.5) % 1.0, 0.9, 0.6, 1.0),
+            ))
+            .inner_margin(egui::style::Margin::same(2.0))
+            .show(ui, |ui| {
+                egui::CollapsingHeader::new(name)
+                    .default_open(true)
+                    .show(ui, |ui| match node {
+                        Node::Sphere { position, radius } => {
+                            grid(ui, |ui| {
+                                ui.label("Position");
+                                vec3(ui, position);
+                                ui.end_row();
 
-                        ui.label("Radius");
-                        ui.add(dragger(radius));
-                        ui.end_row();
-                    });
-                }
-                Node::RoundedCylinder {
-                    cylinder_radius,
-                    half_height,
-                    rounding_radius,
-                } => {
-                    grid(ui, |ui| {
-                        ui.label("Cylinder radius");
-                        ui.add(dragger(cylinder_radius));
-                        ui.end_row();
+                                ui.label("Radius");
+                                ui.add(dragger(radius));
+                                ui.end_row();
+                            });
+                        }
+                        Node::RoundedCylinder {
+                            cylinder_radius,
+                            half_height,
+                            rounding_radius,
+                        } => {
+                            grid(ui, |ui| {
+                                ui.label("Cylinder radius");
+                                ui.add(dragger(cylinder_radius));
+                                ui.end_row();
 
-                        ui.label("Half height");
-                        ui.add(dragger(half_height));
-                        ui.end_row();
+                                ui.label("Half height");
+                                ui.add(dragger(half_height));
+                                ui.end_row();
 
-                        ui.label("Rounding radius");
-                        ui.add(dragger(rounding_radius));
-                        ui.end_row();
-                    });
-                }
-                Node::Torus { big_r, small_r } => {
-                    grid(ui, |ui| {
-                        ui.label("Big radius");
-                        ui.add(dragger(big_r));
-                        ui.end_row();
+                                ui.label("Rounding radius");
+                                ui.add(dragger(rounding_radius));
+                                ui.end_row();
+                            });
+                        }
+                        Node::Torus { big_r, small_r } => {
+                            grid(ui, |ui| {
+                                ui.label("Big radius");
+                                ui.add(dragger(big_r));
+                                ui.end_row();
 
-                        ui.label("Small radius");
-                        ui.add(dragger(small_r));
-                        ui.end_row();
+                                ui.label("Small radius");
+                                ui.add(dragger(small_r));
+                                ui.end_row();
+                            });
+                        }
+                        Node::Union(factor, children) => {
+                            factor_slider(ui, factor);
+                            for (index, child) in children.iter_mut().enumerate() {
+                                render_egui_tree(ui, child, index, depth + 1);
+                            }
+                        }
+                        Node::Intersect(factor, (lhs, rhs)) => {
+                            factor_slider(ui, factor);
+                            render_egui_tree(ui, lhs, 0, depth + 1);
+                            render_egui_tree(ui, rhs, 1, depth + 1);
+                        }
+                        Node::Subtract(factor, (lhs, rhs)) => {
+                            factor_slider(ui, factor);
+                            render_egui_tree(ui, lhs, 0, depth + 1);
+                            render_egui_tree(ui, rhs, 1, depth + 1);
+                        }
+                        Node::Rgb(r, g, b, child) => {
+                            grid(ui, |ui| {
+                                ui.label("Colour");
+                                let mut rgb = [*r, *g, *b];
+                                egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
+                                [*r, *g, *b] = rgb;
+                                ui.end_row();
+                            });
+                            render_egui_tree(ui, child, 0, depth + 1);
+                        }
                     });
-                }
-                Node::Union(factor, children) => {
-                    factor_slider(ui, factor);
-                    for (index, child) in children.iter_mut().enumerate() {
-                        render_egui_tree(ui, child, index);
-                    }
-                }
-                Node::Intersect(factor, (lhs, rhs)) => {
-                    factor_slider(ui, factor);
-                    render_egui_tree(ui, lhs, 0);
-                    render_egui_tree(ui, rhs, 1);
-                }
-                Node::Subtract(factor, (lhs, rhs)) => {
-                    factor_slider(ui, factor);
-                    render_egui_tree(ui, lhs, 0);
-                    render_egui_tree(ui, rhs, 1);
-                }
-                Node::Rgb(r, g, b, child) => {
-                    grid(ui, |ui| {
-                        ui.label("Colour");
-                        let mut rgb = [*r, *g, *b];
-                        egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
-                        [*r, *g, *b] = rgb;
-                        ui.end_row();
-                    });
-                    render_egui_tree(ui, child, 0);
-                }
             });
     });
 }
