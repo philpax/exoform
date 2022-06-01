@@ -17,10 +17,11 @@ pub enum Node {
         small_r: f32,
     },
     Union(f32, Vec<Node>),
-    Intersect(f32, (Box<Node>, Box<Node>)),
-    Subtract(f32, (Box<Node>, Box<Node>)),
-    Rgb(f32, f32, f32, Box<Node>),
+    Intersect(f32, (Option<Box<Node>>, Option<Box<Node>>)),
+    Subtract(f32, (Option<Box<Node>>, Option<Box<Node>>)),
+    Rgb(f32, f32, f32, Option<Box<Node>>),
 }
+
 impl ToString for Node {
     fn to_string(&self) -> String {
         let mut buf = Vec::new();

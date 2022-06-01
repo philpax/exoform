@@ -18,71 +18,25 @@ struct RebuildTimer(Timer);
 fn build_sample_graph() -> Node {
     use Node::*;
     Union(
-        0.0,
+        0.05,
         vec![
             Subtract(
-                0.0,
+                0.7,
                 (
-                    Box::new(Intersect(
-                        0.0,
-                        (
-                            Box::new(Subtract(
-                                0.2,
-                                (
-                                    Box::new(Union(
-                                        0.4,
-                                        vec![
-                                            Rgb(
-                                                255.0,
-                                                0.0,
-                                                0.0,
-                                                Box::new(Sphere {
-                                                    position: Vec3::new(-0.5, 0.0, 0.0),
-                                                    radius: 1.0,
-                                                }),
-                                            ),
-                                            Rgb(
-                                                0.0,
-                                                255.0,
-                                                0.0,
-                                                Box::new(Sphere {
-                                                    position: Vec3::new(0.0, 0.0, 0.5),
-                                                    radius: 1.0,
-                                                }),
-                                            ),
-                                            Rgb(
-                                                0.0,
-                                                0.0,
-                                                255.0,
-                                                Box::new(Sphere {
-                                                    position: Vec3::new(0.5, 0.0, 0.0),
-                                                    radius: 1.0,
-                                                }),
-                                            ),
-                                        ],
-                                    )),
-                                    Box::new(Sphere {
-                                        position: Vec3::new(0.0, 1.0, 0.0),
-                                        radius: 0.6,
-                                    }),
-                                ),
-                            )),
-                            Box::new(Sphere {
-                                position: Vec3::new(0.0, 0.0, 0.0),
-                                radius: 1.2,
-                            }),
-                        ),
-                    )),
-                    Box::new(RoundedCylinder {
-                        cylinder_radius: 0.5,
-                        half_height: 2.0,
-                        rounding_radius: 0.0,
-                    }),
+                    Some(Box::new(Sphere {
+                        position: glam::Vec3::ZERO,
+                        radius: 1.0,
+                    })),
+                    Some(Box::new(Sphere {
+                        position: glam::Vec3::new(0.0, 1.0, 0.0),
+                        radius: 0.4,
+                    })),
                 ),
             ),
-            Torus {
-                big_r: 2.0,
-                small_r: 0.5,
+            RoundedCylinder {
+                cylinder_radius: 0.05,
+                half_height: 0.9,
+                rounding_radius: 0.01,
             },
         ],
     )
@@ -121,71 +75,77 @@ pub fn main() {
         .run();
 }
 
-fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> saft::NodeId {
+fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<saft::NodeId> {
     match node {
-        Node::Sphere { position, radius } => graph.sphere(*position, *radius),
+        Node::Sphere { position, radius } => Some(graph.sphere(*position, *radius)),
         Node::RoundedCylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
-        } => graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius),
-        Node::Torus { big_r, small_r } => graph.torus(*big_r, *small_r),
+        } => Some(graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
+        Node::Torus { big_r, small_r } => Some(graph.torus(*big_r, *small_r)),
         Node::Union(size, nodes) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
+            if nodes.is_empty() {
+                return None;
+            }
             if nodes.len() == 2 {
                 let (lhs, rhs) = (nodes[0], nodes[1]);
                 if *size == 0.0 {
-                    graph.op_union(lhs, rhs)
+                    Some(graph.op_union(lhs, rhs))
                 } else {
-                    graph.op_union_smooth(lhs, rhs, *size)
+                    Some(graph.op_union_smooth(lhs, rhs, *size))
                 }
             } else if *size == 0.0 {
-                graph.op_union_multi(nodes)
+                Some(graph.op_union_multi(nodes))
             } else {
-                graph.op_union_multi_smooth(nodes, *size)
+                Some(graph.op_union_multi_smooth(nodes, *size))
             }
         }
         Node::Intersect(size, nodes) => {
-            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes);
+            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes)?;
             if *size == 0.0 {
-                graph.op_intersect(lhs, rhs)
+                Some(graph.op_intersect(lhs, rhs))
             } else {
-                graph.op_intersect_smooth(lhs, rhs, *size)
+                Some(graph.op_intersect_smooth(lhs, rhs, *size))
             }
         }
         Node::Subtract(size, nodes) => {
-            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes);
+            let (lhs, rhs) = lhs_rhs_to_saft_nodes(graph, nodes)?;
             if *size == 0.0 {
-                graph.op_subtract(lhs, rhs)
+                Some(graph.op_subtract(lhs, rhs))
             } else {
-                graph.op_subtract_smooth(lhs, rhs, *size)
+                Some(graph.op_subtract_smooth(lhs, rhs, *size))
             }
         }
         Node::Rgb(r, g, b, node) => {
-            let child = node_to_saft_node(graph, node);
-            graph.op_rgb(child, [*r, *g, *b])
+            let child = node_to_saft_node(graph, node.as_deref()?)?;
+            Some(graph.op_rgb(child, [*r, *g, *b]))
         }
     }
 }
 
 fn nodes_to_saft_nodes(graph: &mut saft::Graph, nodes: &[Node]) -> Vec<saft::NodeId> {
-    nodes.iter().map(|n| node_to_saft_node(graph, n)).collect()
+    nodes
+        .iter()
+        .filter_map(|n| node_to_saft_node(graph, n))
+        .collect()
 }
 
 fn lhs_rhs_to_saft_nodes(
     graph: &mut saft::Graph,
-    nodes: &(Box<Node>, Box<Node>),
-) -> (saft::NodeId, saft::NodeId) {
-    (
-        node_to_saft_node(graph, &nodes.0),
-        node_to_saft_node(graph, &nodes.1),
-    )
+    nodes: &(Option<Box<Node>>, Option<Box<Node>>),
+) -> Option<(saft::NodeId, saft::NodeId)> {
+    Some((
+        node_to_saft_node(graph, nodes.0.as_ref()?)?,
+        node_to_saft_node(graph, nodes.1.as_ref()?)?,
+    ))
 }
 
-fn node_to_saft(root: &Node) -> (saft::Graph, saft::NodeId) {
+fn node_to_saft(root: &Node) -> Option<(saft::Graph, saft::NodeId)> {
     let mut graph = saft::Graph::default();
-    let root_id = node_to_saft_node(&mut graph, root);
-    (graph, root_id)
+    let root_id = node_to_saft_node(&mut graph, root)?;
+    Some((graph, root_id))
 }
 
 fn create_mesh(
@@ -195,7 +155,10 @@ fn create_mesh(
     current_entity: &mut CurrentEntity,
     root: &Node,
 ) {
-    let (graph, root) = node_to_saft(root);
+    let (graph, root) = match node_to_saft(root) {
+        Some(vals) => vals,
+        None => return,
+    };
     let mesh = sdf_to_bevy_mesh(graph, root);
 
     if let Some(entity) = current_entity.0 {
@@ -413,14 +376,31 @@ fn sdf_code_editor(
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
-            render_egui_tree(ui, &mut graph.0, 0, 0);
+            render_egui_tree(ui, Some(&mut graph.0), 0, 0);
         })
         .response
         .rect
         .width();
 }
 
-fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usize) {
+fn render_egui_tree(
+    ui: &mut egui::Ui,
+    node: Option<&mut Node>,
+    index: usize,
+    depth: usize,
+) -> bool {
+    let color = egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, 0.6, 0.7, 1.0);
+    if node.is_none() {
+        ui.label(
+            egui::RichText::new("⚠ No node!")
+                .color(egui::Color32::BLACK)
+                .background_color(color)
+                .text_style(egui::TextStyle::Heading),
+        );
+        return false;
+    }
+    let node = node.unwrap();
+
     let name = match node {
         Node::Sphere { .. } => "Sphere",
         Node::RoundedCylinder { .. } => "Cylinder",
@@ -461,8 +441,19 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usi
         });
     }
 
+    fn render_removable_tree(
+        ui: &mut egui::Ui,
+        node: &mut Option<Box<Node>>,
+        index: usize,
+        depth: usize,
+    ) {
+        if render_egui_tree(ui, node.as_deref_mut(), index, depth + 1) {
+            *node = None;
+        }
+    }
+
+    let mut should_remove = false;
     ui.push_id(index, |ui| {
-        let color = egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, 0.6, 0.7, 1.0);
         egui::Frame::none()
             .stroke(egui::Stroke::new(1.0, color))
             .inner_margin(egui::style::Margin::same(2.0))
@@ -479,6 +470,13 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usi
                             .color(color)
                             .text_style(egui::TextStyle::Monospace),
                     );
+
+                    if ui
+                        .small_button(egui::RichText::new("X").color(egui::Color32::LIGHT_RED))
+                        .clicked()
+                    {
+                        should_remove = true;
+                    }
                 })
                 .body(|ui| match node {
                     Node::Sphere { position, radius } => {
@@ -524,19 +522,27 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usi
                     }
                     Node::Union(factor, children) => {
                         factor_slider(ui, factor);
+                        let mut to_remove = vec![];
                         for (index, child) in children.iter_mut().enumerate() {
-                            render_egui_tree(ui, child, index, depth + 1);
+                            if render_egui_tree(ui, Some(child), index, depth + 1) {
+                                to_remove.push(index);
+                            }
+                        }
+                        to_remove.sort_unstable();
+                        to_remove.reverse();
+                        for r in to_remove {
+                            children.remove(r);
                         }
                     }
                     Node::Intersect(factor, (lhs, rhs)) => {
                         factor_slider(ui, factor);
-                        render_egui_tree(ui, lhs, 0, depth + 1);
-                        render_egui_tree(ui, rhs, 1, depth + 1);
+                        render_removable_tree(ui, lhs, 0, depth);
+                        render_removable_tree(ui, rhs, 1, depth);
                     }
                     Node::Subtract(factor, (lhs, rhs)) => {
                         factor_slider(ui, factor);
-                        render_egui_tree(ui, lhs, 0, depth + 1);
-                        render_egui_tree(ui, rhs, 1, depth + 1);
+                        render_removable_tree(ui, lhs, 0, depth);
+                        render_removable_tree(ui, rhs, 1, depth);
                     }
                     Node::Rgb(r, g, b, child) => {
                         grid(ui, |ui| {
@@ -546,11 +552,13 @@ fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usi
                             [*r, *g, *b] = rgb;
                             ui.end_row();
                         });
-                        render_egui_tree(ui, child, 0, depth + 1);
+                        render_removable_tree(ui, child, 0, depth);
                     }
                 });
             });
     });
+
+    should_remove
 }
 
 fn rebuild_mesh(
