@@ -1,4 +1,4 @@
-use bevy::{input::mouse::MouseMotion, prelude::*, window::PresentMode};
+use bevy::{input::mouse::MouseMotion, prelude::*};
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 
 use shared::Node;
@@ -92,8 +92,8 @@ pub fn main() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
 
-    App::new()
-        .insert_resource(Msaa { samples: 4 })
+    let mut app = App::new();
+    app.insert_resource(Msaa { samples: 4 })
         .insert_resource(bevy::winit::WinitSettings::desktop_app())
         .insert_resource(Graph(build_sample_graph()))
         .insert_resource(CurrentEntity(None))
@@ -102,13 +102,17 @@ pub fn main() {
             true,
         )))
         .insert_resource(WindowDescriptor {
-            present_mode: PresentMode::Mailbox,
+            width: 1600.,
+            height: 900.,
             ..Default::default()
         })
         .init_resource::<OccupiedScreenSpace>()
-        .add_plugins(DefaultPlugins)
-        .add_plugin(bevy_web_fullscreen::FullViewportPlugin)
-        .add_plugin(EguiPlugin)
+        .add_plugins(DefaultPlugins);
+
+    #[cfg(target_arch = "wasm32")]
+    app.add_plugin(bevy_web_fullscreen::FullViewportPlugin);
+
+    app.add_plugin(EguiPlugin)
         .add_startup_system(setup)
         .add_system(sdf_code_editor)
         .add_system(keep_rebuilding_mesh)
