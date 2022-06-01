@@ -33,7 +33,7 @@ fn build_sample_graph() -> Node {
                     })),
                 ),
             ),
-            RoundedCylinder {
+            Cylinder {
                 cylinder_radius: 0.05,
                 half_height: 0.9,
                 rounding_radius: 0.01,
@@ -78,7 +78,7 @@ pub fn main() {
 fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<saft::NodeId> {
     match node {
         Node::Sphere { position, radius } => Some(graph.sphere(*position, *radius)),
-        Node::RoundedCylinder {
+        Node::Cylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
@@ -376,40 +376,15 @@ fn sdf_code_editor(
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
-            render_egui_tree(ui, Some(&mut graph.0), 0, 0);
+            render_egui_tree(ui, &mut graph.0, 0, 0);
         })
         .response
         .rect
         .width();
 }
 
-fn render_egui_tree(
-    ui: &mut egui::Ui,
-    node: Option<&mut Node>,
-    index: usize,
-    depth: usize,
-) -> bool {
-    let color = egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, 0.6, 0.7, 1.0);
-    if node.is_none() {
-        ui.label(
-            egui::RichText::new("⚠ No node!")
-                .color(egui::Color32::BLACK)
-                .background_color(color)
-                .text_style(egui::TextStyle::Heading),
-        );
-        return false;
-    }
-    let node = node.unwrap();
-
-    let name = match node {
-        Node::Sphere { .. } => "Sphere",
-        Node::RoundedCylinder { .. } => "Cylinder",
-        Node::Torus { .. } => "Torus",
-        Node::Union(..) => "Union",
-        Node::Intersect(..) => "Intersect",
-        Node::Subtract(..) => "Subtract",
-        Node::Rgb(..) => "Rgb",
-    };
+fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usize) -> bool {
+    let color = depth_to_color(depth);
 
     fn dragger(value: &mut f32) -> egui::widgets::DragValue {
         egui::widgets::DragValue::new(value)
@@ -447,8 +422,19 @@ fn render_egui_tree(
         index: usize,
         depth: usize,
     ) {
-        if render_egui_tree(ui, node.as_deref_mut(), index, depth + 1) {
-            *node = None;
+        match node {
+            Some(inside_node) => {
+                if render_egui_tree(ui, inside_node, index, depth + 1) {
+                    *node = None;
+                }
+            }
+            None => {
+                ui.push_id(index, |ui| {
+                    if let Some(new_node) = render_add_button(ui, depth + 1) {
+                        *node = Some(Box::new(new_node));
+                    }
+                });
+            }
         }
     }
 
@@ -458,6 +444,7 @@ fn render_egui_tree(
             .stroke(egui::Stroke::new(1.0, color))
             .inner_margin(egui::style::Margin::same(2.0))
             .show(ui, |ui| {
+                let name = node.name();
                 let id = ui.make_persistent_id(name);
                 egui::collapsing_header::CollapsingState::load_with_default_open(
                     ui.ctx(),
@@ -490,7 +477,7 @@ fn render_egui_tree(
                             ui.end_row();
                         });
                     }
-                    Node::RoundedCylinder {
+                    Node::Cylinder {
                         cylinder_radius,
                         half_height,
                         rounding_radius,
@@ -524,7 +511,7 @@ fn render_egui_tree(
                         factor_slider(ui, factor);
                         let mut to_remove = vec![];
                         for (index, child) in children.iter_mut().enumerate() {
-                            if render_egui_tree(ui, Some(child), index, depth + 1) {
+                            if render_egui_tree(ui, child, index, depth + 1) {
                                 to_remove.push(index);
                             }
                         }
@@ -532,6 +519,10 @@ fn render_egui_tree(
                         to_remove.reverse();
                         for r in to_remove {
                             children.remove(r);
+                        }
+
+                        if let Some(new_node) = render_add_button(ui, depth + 1) {
+                            children.push(new_node);
                         }
                     }
                     Node::Intersect(factor, (lhs, rhs)) => {
@@ -559,6 +550,44 @@ fn render_egui_tree(
     });
 
     should_remove
+}
+
+fn render_add_button(ui: &mut egui::Ui, depth: usize) -> Option<Node> {
+    let color = depth_to_color(depth);
+    let response = ui.add_sized(
+        egui::Vec2::new(ui.available_width(), ui.spacing().interact_size.y),
+        egui::widgets::Button::new(egui::RichText::new("Add").color(color)).stroke(egui::Stroke {
+            width: 2.0,
+            color: color.into(),
+        }),
+    );
+    let popup_id = ui.make_persistent_id("add_menu");
+    if response.clicked() {
+        ui.memory().toggle_popup(popup_id);
+    }
+    let mut new_node = None;
+    egui::popup_below_widget(ui, popup_id, &response, |ui| {
+        for default in shared::NODE_DEFAULTS.iter() {
+            let category_color = match default.category() {
+                shared::NodeCategory::Primitive => egui::Color32::from_rgb(78, 205, 196),
+                shared::NodeCategory::Operation => egui::Color32::from_rgb(199, 244, 100),
+                shared::NodeCategory::Metadata => egui::Color32::from_rgb(255, 107, 107),
+            };
+            if ui
+                .add(egui::widgets::Button::new(
+                    egui::RichText::new(default.name()).color(category_color),
+                ))
+                .clicked()
+            {
+                new_node = Some(default.clone());
+            }
+        }
+    });
+    new_node
+}
+
+fn depth_to_color(depth: usize) -> egui::color::Hsva {
+    egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, 0.6, 0.7, 1.0)
 }
 
 fn rebuild_mesh(
