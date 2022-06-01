@@ -1,21 +1,19 @@
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{input::mouse::MouseMotion, prelude::*, window::PresentMode};
 use bevy_egui::{egui, EguiContext, EguiPlugin};
-
-use smooth_bevy_cameras::{
-    controllers::orbit::{
-        ControlEvent, OrbitCameraBundle, OrbitCameraController, OrbitCameraPlugin,
-    },
-    LookTransformPlugin,
-};
 
 use shared::Node;
 
+#[derive(Default)]
+struct OccupiedScreenSpace {
+    left: f32,
+    _top: f32,
+    _right: f32,
+    _bottom: f32,
+}
 #[derive(Debug)]
-pub struct Graph(Node);
-
-pub struct CurrentEntity(Option<Entity>);
-
-pub struct RebuildTimer(Timer);
+struct Graph(Node);
+struct CurrentEntity(Option<Entity>);
+struct RebuildTimer(Timer);
 
 fn build_sample_graph() -> Node {
     use Node::*;
@@ -103,15 +101,18 @@ pub fn main() {
             std::time::Duration::from_secs(1),
             true,
         )))
+        .insert_resource(WindowDescriptor {
+            present_mode: PresentMode::Mailbox,
+            ..Default::default()
+        })
+        .init_resource::<OccupiedScreenSpace>()
         .add_plugins(DefaultPlugins)
-        .add_plugin(LookTransformPlugin)
-        .add_plugin(OrbitCameraPlugin::new(true))
         .add_plugin(bevy_web_fullscreen::FullViewportPlugin)
         .add_plugin(EguiPlugin)
         .add_startup_system(setup)
-        .add_system(input_map)
         .add_system(sdf_code_editor)
         .add_system(keep_rebuilding_mesh)
+        .add_system(pan_orbit_camera)
         .run();
 }
 
@@ -218,12 +219,158 @@ fn setup(mut commands: Commands) {
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
         ..default()
     });
-    commands.spawn_bundle(OrbitCameraBundle::new(
-        OrbitCameraController::default(),
-        PerspectiveCameraBundle::default(),
-        Vec3::new(-2.0, 5.0, 5.0),
-        Vec3::new(0., 0., 0.),
-    ));
+    let eye = Vec3::new(-2.0, 5.0, 5.0);
+    let target = Vec3::new(0., 0., 0.);
+    let transform = Transform::from_translation(eye).looking_at(target, Vec3::Y);
+    commands
+        .spawn_bundle(PerspectiveCameraBundle {
+            transform,
+            ..Default::default()
+        })
+        .insert(PanOrbitCamera {
+            radius: eye.distance(target),
+            ..Default::default()
+        });
+}
+
+/// Tags an entity as capable of panning and orbiting.
+#[derive(Component)]
+struct PanOrbitCamera {
+    /// The "focus point" to orbit around. It is automatically updated when panning the camera
+    pub focus: Vec3,
+    pub radius: f32,
+    pub upside_down: bool,
+}
+
+impl Default for PanOrbitCamera {
+    fn default() -> Self {
+        PanOrbitCamera {
+            focus: Vec3::ZERO,
+            radius: 5.0,
+            upside_down: false,
+        }
+    }
+}
+
+// Based off
+// - https://bevy-cheatbook.github.io/cookbook/pan-orbit-camera.html
+// - https://github.com/mvlabat/bevy_egui/blob/main/examples/side_panel.rs
+// (thank you!)
+fn pan_orbit_camera(
+    occupied_screen_space: Res<OccupiedScreenSpace>,
+    windows: Res<Windows>,
+    mut ev_motion: EventReader<MouseMotion>,
+    input_mouse: Res<Input<MouseButton>>,
+    mut egui_context: ResMut<EguiContext>,
+    mut query: Query<(&mut PanOrbitCamera, &mut Transform, &PerspectiveProjection)>,
+) {
+    let orbit_button = MouseButton::Left;
+    let pan_button = MouseButton::Middle;
+    let zoom_button = MouseButton::Right;
+
+    let mut pan = Vec2::ZERO;
+    let mut rotation_move = Vec2::ZERO;
+    let mut zoom = 0.0;
+    let mut orbit_button_changed = false;
+
+    let egui_wants_input = {
+        let ctx = egui_context.ctx_mut();
+        ctx.wants_keyboard_input() || ctx.wants_pointer_input()
+    };
+    if !egui_wants_input {
+        if input_mouse.pressed(orbit_button) {
+            for ev in ev_motion.iter() {
+                rotation_move += ev.delta;
+            }
+        } else if input_mouse.pressed(pan_button) {
+            // Pan only if we're not rotating at the moment
+            for ev in ev_motion.iter() {
+                pan += ev.delta;
+            }
+        } else if input_mouse.pressed(zoom_button) {
+            for ev in ev_motion.iter() {
+                zoom += ev.delta.x;
+            }
+        }
+    }
+    if input_mouse.just_released(orbit_button) || input_mouse.just_pressed(orbit_button) {
+        orbit_button_changed = true;
+    }
+
+    let window = get_primary_window_size(&windows);
+    for (mut pan_orbit, mut transform, projection) in query.iter_mut() {
+        if orbit_button_changed {
+            // only check for upside down when orbiting started or ended this frame
+            // if the camera is "upside" down, panning horizontally would be inverted, so invert the input to make it correct
+            let up = transform.rotation * Vec3::Y;
+            pan_orbit.upside_down = up.y <= 0.0;
+        }
+
+        if rotation_move.length_squared() > 0.0 {
+            let (yaw, pitch) = {
+                let delta_x = {
+                    let delta = rotation_move.x / window.x * std::f32::consts::PI * 2.0;
+                    if pan_orbit.upside_down {
+                        -delta
+                    } else {
+                        delta
+                    }
+                };
+                let delta_y = rotation_move.y / window.y * std::f32::consts::PI;
+                (
+                    Quat::from_rotation_y(-delta_x),
+                    Quat::from_rotation_x(-delta_y),
+                )
+            };
+            transform.rotation = yaw * transform.rotation; // rotate around global y axis
+            transform.rotation *= pitch; // rotate around local x axis
+        } else if pan.length_squared() > 0.0 {
+            // make panning distance independent of resolution and FOV,
+            let pan =
+                pan * Vec2::new(projection.fov * projection.aspect_ratio, projection.fov) / window;
+            // translate by local axes
+            let right = transform.rotation * Vec3::X * -pan.x;
+            let up = transform.rotation * Vec3::Y * pan.y;
+            // make panning proportional to distance away from focus point
+            let translation = (right + up) * pan_orbit.radius;
+            pan_orbit.focus += translation;
+        } else if zoom.abs() > 0.0 {
+            let zoom = zoom * projection.fov * projection.aspect_ratio / window.x;
+            pan_orbit.radius -= zoom * pan_orbit.radius;
+            // dont allow zoom to reach zero or you get stuck
+            pan_orbit.radius = f32::max(pan_orbit.radius, 0.05);
+        }
+
+        // emulating parent/child to make the yaw/y-axis rotation behave like a turntable
+        // parent = x and y rotation
+        // child = z-offset
+        let rot_matrix = Mat3::from_quat(transform.rotation);
+        let uncorrected_translation =
+            pan_orbit.focus + rot_matrix.mul_vec3(Vec3::new(0.0, 0.0, pan_orbit.radius));
+
+        // Once the initial translation has been calculated, add in an offset to handle the
+        // complications from having a side panel.
+        let frustum_height = 2.0 * pan_orbit.radius * (projection.fov * 0.5).tan();
+        let frustum_width = frustum_height * projection.aspect_ratio;
+
+        let window = windows.get_primary().unwrap();
+
+        let left_taken = occupied_screen_space.left / window.width();
+        let right_taken = occupied_screen_space._right / window.width();
+        let top_taken = occupied_screen_space._top / window.height();
+        let bottom_taken = occupied_screen_space._bottom / window.height();
+        let offset = transform.rotation.mul_vec3(Vec3::new(
+            (right_taken - left_taken) * frustum_width * 0.5,
+            (top_taken - bottom_taken) * frustum_height * 0.5,
+            0.0,
+        ));
+        transform.translation = uncorrected_translation + offset;
+    }
+}
+
+fn get_primary_window_size(windows: &Res<Windows>) -> Vec2 {
+    let window = windows.get_primary().unwrap();
+    Vec2::new(window.width() as f32, window.height() as f32)
 }
 
 fn sdf_to_bevy_mesh(graph: saft::Graph, root: saft::NodeId) -> Mesh {
@@ -252,53 +399,20 @@ fn sdf_to_bevy_mesh(graph: saft::Graph, root: saft::NodeId) -> Mesh {
     mesh
 }
 
-pub fn input_map(
-    mut events: EventWriter<ControlEvent>,
-    mut mouse_motion_events: EventReader<MouseMotion>,
+fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
-    mouse_buttons: Res<Input<MouseButton>>,
-    keyboard: Res<Input<KeyCode>>,
-    controllers: Query<&OrbitCameraController>,
+    mut graph: ResMut<Graph>,
+    mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
 ) {
-    let controller = if let Some(controller) = controllers.iter().find(|c| c.enabled) {
-        controller
-    } else {
-        return;
-    };
-    let OrbitCameraController {
-        mouse_rotate_sensitivity,
-        mouse_translate_sensitivity,
-        ..
-    } = *controller;
-
-    let mut cursor_delta = Vec2::ZERO;
-    for event in mouse_motion_events.iter() {
-        cursor_delta += event.delta;
-    }
-
-    let egui_wants_input = {
-        let ctx = egui_context.ctx_mut();
-        ctx.wants_keyboard_input() || ctx.wants_pointer_input()
-    };
-
-    if !egui_wants_input && mouse_buttons.pressed(MouseButton::Left) {
-        if keyboard.pressed(KeyCode::LControl) {
-            events.send(ControlEvent::TranslateTarget(
-                mouse_translate_sensitivity * cursor_delta,
-            ));
-        } else {
-            events.send(ControlEvent::Orbit(mouse_rotate_sensitivity * cursor_delta));
-        }
-    }
-}
-
-fn sdf_code_editor(mut egui_context: ResMut<EguiContext>, mut graph: ResMut<Graph>) {
     let ctx = egui_context.ctx_mut();
-    egui::SidePanel::left("left_panel")
+    occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
             render_egui_tree(ui, &mut graph.0, 0);
-        });
+        })
+        .response
+        .rect
+        .width();
 }
 
 fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize) {

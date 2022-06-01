@@ -12,10 +12,8 @@ bevy = "0.7"
 bevy_egui = "0.14.0"
 bevy_web_fullscreen = {git = "https://github.com/oscrim/bevy_web_fullscreen.git"}
 bimap = "0.6.2"
-saft = "0.30.0"
-smooth-bevy-cameras = "0.4.0"
-
 glam = "0.20.5"
+saft = "0.30.0"
 shared = {path = "../shared"}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
