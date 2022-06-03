@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
-use shared::Node;
+use shared::{Node, NodeData};
 
 mod camera;
 mod mesh_generation;
@@ -16,12 +16,11 @@ pub struct OccupiedScreenSpace {
 }
 #[derive(Debug)]
 pub struct Graph(Node);
-struct CurrentEntity(Option<Entity>);
-struct RebuildTimer(Timer);
+pub struct CurrentEntity(Option<Entity>);
+pub struct RebuildTimer(Timer);
 
 fn build_sample_graph() -> Node {
-    use Node::*;
-    Union(0.0, vec![])
+    Node::default_with_data(NodeData::Union(0.0, vec![]))
 }
 
 pub fn main() {

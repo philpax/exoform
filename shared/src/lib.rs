@@ -10,9 +10,8 @@ pub enum NodeCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Node {
+pub enum NodeData {
     Sphere {
-        position: Vec3,
         radius: f32,
     },
     Cylinder {
@@ -35,70 +34,84 @@ pub enum Node {
     Rotate(Quat, Option<Box<Node>>),
     Scale(f32, Option<Box<Node>>),
 }
-impl Node {
+impl NodeData {
     pub fn name(&self) -> &str {
         match self {
-            Node::Sphere { .. } => "Sphere",
-            Node::Cylinder { .. } => "Cylinder",
-            Node::Torus { .. } => "Torus",
+            NodeData::Sphere { .. } => "Sphere",
+            NodeData::Cylinder { .. } => "Cylinder",
+            NodeData::Torus { .. } => "Torus",
 
-            Node::Union(..) => "Union",
-            Node::Intersect(..) => "Intersect",
-            Node::Subtract(..) => "Subtract",
+            NodeData::Union(..) => "Union",
+            NodeData::Intersect(..) => "Intersect",
+            NodeData::Subtract(..) => "Subtract",
 
-            Node::Rgb(..) => "Rgb",
+            NodeData::Rgb(..) => "Rgb",
 
-            Node::Translate(..) => "Translate",
-            Node::Rotate(..) => "Rotate",
-            Node::Scale(..) => "Scale",
+            NodeData::Translate(..) => "Translate",
+            NodeData::Rotate(..) => "Rotate",
+            NodeData::Scale(..) => "Scale",
         }
     }
 
     pub fn category(&self) -> NodeCategory {
         match self {
-            Node::Sphere { .. } => NodeCategory::Primitive,
-            Node::Cylinder { .. } => NodeCategory::Primitive,
-            Node::Torus { .. } => NodeCategory::Primitive,
+            NodeData::Sphere { .. } => NodeCategory::Primitive,
+            NodeData::Cylinder { .. } => NodeCategory::Primitive,
+            NodeData::Torus { .. } => NodeCategory::Primitive,
 
-            Node::Union(..) => NodeCategory::Operation,
-            Node::Intersect(..) => NodeCategory::Operation,
-            Node::Subtract(..) => NodeCategory::Operation,
+            NodeData::Union(..) => NodeCategory::Operation,
+            NodeData::Intersect(..) => NodeCategory::Operation,
+            NodeData::Subtract(..) => NodeCategory::Operation,
 
-            Node::Rgb(..) => NodeCategory::Metadata,
+            NodeData::Rgb(..) => NodeCategory::Metadata,
 
-            Node::Translate(..) => NodeCategory::Transform,
-            Node::Rotate(..) => NodeCategory::Transform,
-            Node::Scale(..) => NodeCategory::Transform,
+            NodeData::Translate(..) => NodeCategory::Transform,
+            NodeData::Rotate(..) => NodeCategory::Transform,
+            NodeData::Scale(..) => NodeCategory::Transform,
         }
     }
 }
 
-pub const NODE_DEFAULTS: &[Node] = &[
-    Node::Sphere {
-        position: glam::Vec3::ZERO,
-        radius: 1.0,
-    },
-    Node::Cylinder {
+pub const NODE_DEFAULTS: &[NodeData] = &[
+    NodeData::Sphere { radius: 1.0 },
+    NodeData::Cylinder {
         cylinder_radius: 1.0,
         half_height: 1.0,
         rounding_radius: 0.0,
     },
-    Node::Torus {
+    NodeData::Torus {
         big_r: 1.0,
         small_r: 0.1,
     },
     //
-    Node::Union(0.0, vec![]),
-    Node::Intersect(0.0, (None, None)),
-    Node::Subtract(0.0, (None, None)),
+    NodeData::Union(0.0, vec![]),
+    NodeData::Intersect(0.0, (None, None)),
+    NodeData::Subtract(0.0, (None, None)),
     //
-    Node::Rgb(1.0, 1.0, 1.0, None),
+    NodeData::Rgb(1.0, 1.0, 1.0, None),
     //
-    Node::Translate(Vec3::ZERO, None),
-    Node::Rotate(Quat::IDENTITY, None),
-    Node::Scale(1.0, None),
+    NodeData::Translate(Vec3::ZERO, None),
+    NodeData::Rotate(Quat::IDENTITY, None),
+    NodeData::Scale(1.0, None),
 ];
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Node {
+    pub translation: Vec3,
+    pub rotation: Quat,
+    pub scale: f32,
+    pub data: NodeData,
+}
+impl Node {
+    pub fn default_with_data(data: NodeData) -> Node {
+        Node {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: 1.0,
+            data,
+        }
+    }
+}
 impl ToString for Node {
     fn to_string(&self) -> String {
         let mut buf = Vec::new();

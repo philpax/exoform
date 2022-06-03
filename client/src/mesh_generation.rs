@@ -1,18 +1,18 @@
 use super::{CurrentEntity, Graph, RebuildTimer};
 use bevy::prelude::*;
-use shared::Node;
+use shared::{Node, NodeData};
 
-pub(crate) fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<saft::NodeId> {
-    match node {
-        Node::Sphere { position, radius } => Some(graph.sphere(*position, *radius)),
-        Node::Cylinder {
+fn node_to_saft_node_data(graph: &mut saft::Graph, node_data: &NodeData) -> Option<saft::NodeId> {
+    match node_data {
+        NodeData::Sphere { radius } => Some(graph.sphere(glam::Vec3::ZERO, *radius)),
+        NodeData::Cylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
         } => Some(graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
-        Node::Torus { big_r, small_r } => Some(graph.torus(*big_r, *small_r)),
+        NodeData::Torus { big_r, small_r } => Some(graph.torus(*big_r, *small_r)),
 
-        Node::Union(size, nodes) => {
+        NodeData::Union(size, nodes) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.is_empty() {
                 return None;
@@ -30,7 +30,7 @@ pub(crate) fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<
                 Some(graph.op_union_multi_smooth(nodes, *size))
             }
         }
-        Node::Intersect(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
+        NodeData::Intersect(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
             (Some(lhs), Some(rhs)) => {
                 if *size == 0.0 {
                     Some(graph.op_intersect(lhs, rhs))
@@ -41,7 +41,7 @@ pub(crate) fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<
             (Some(lhs), None) => Some(lhs),
             _ => None,
         },
-        Node::Subtract(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
+        NodeData::Subtract(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
             (Some(lhs), Some(rhs)) => {
                 if *size == 0.0 {
                     Some(graph.op_subtract(lhs, rhs))
@@ -53,34 +53,59 @@ pub(crate) fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<
             _ => None,
         },
 
-        Node::Rgb(r, g, b, node) => {
+        NodeData::Rgb(r, g, b, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph.op_rgb(child, [*r, *g, *b]))
         }
 
-        Node::Translate(position, node) => {
+        NodeData::Translate(position, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
-            Some(graph.op_translate(child, position.to_array()))
+            Some(graph_translate(graph, child, position))
         }
-        Node::Rotate(rotation, node) => {
+        NodeData::Rotate(rotation, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
-            Some(graph.op_rotate(child, glam::Quat::from_array(rotation.to_array())))
+            Some(graph_rotate(graph, child, rotation))
         }
-        Node::Scale(scale, node) => {
+        NodeData::Scale(scale, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph.op_scale(child, *scale))
         }
     }
 }
 
-pub(crate) fn nodes_to_saft_nodes(graph: &mut saft::Graph, nodes: &[Node]) -> Vec<saft::NodeId> {
+fn graph_translate(graph: &mut saft::Graph, child: saft::NodeId, position: &Vec3) -> saft::NodeId {
+    graph.op_translate(child, position.to_array())
+}
+
+fn graph_rotate(graph: &mut saft::Graph, child: saft::NodeId, rotation: &Quat) -> saft::NodeId {
+    graph.op_rotate(child, glam::Quat::from_array(rotation.to_array()))
+}
+
+fn node_to_saft_node(graph: &mut saft::Graph, node: &Node) -> Option<saft::NodeId> {
+    let mut node_id = node_to_saft_node_data(graph, &node.data)?;
+    if node.scale != 1.0 {
+        node_id = graph.op_scale(node_id, node.scale)
+    }
+
+    if !node.rotation.is_near_identity() {
+        node_id = graph_rotate(graph, node_id, &node.rotation);
+    };
+
+    if node.translation.length_squared() != 0.0 {
+        node_id = graph_translate(graph, node_id, &node.translation)
+    }
+
+    Some(node_id)
+}
+
+fn nodes_to_saft_nodes(graph: &mut saft::Graph, nodes: &[Node]) -> Vec<saft::NodeId> {
     nodes
         .iter()
         .filter_map(|n| node_to_saft_node(graph, n))
         .collect()
 }
 
-pub(crate) fn lhs_rhs_to_saft_nodes(
+fn lhs_rhs_to_saft_nodes(
     graph: &mut saft::Graph,
     nodes: &(Option<Box<Node>>, Option<Box<Node>>),
 ) -> (Option<saft::NodeId>, Option<saft::NodeId>) {
@@ -96,13 +121,13 @@ pub(crate) fn lhs_rhs_to_saft_nodes(
     )
 }
 
-pub(crate) fn node_to_saft(root: &Node) -> Option<(saft::Graph, saft::NodeId)> {
+fn node_to_saft(root: &Node) -> Option<(saft::Graph, saft::NodeId)> {
     let mut graph = saft::Graph::default();
     let root_id = node_to_saft_node(&mut graph, root)?;
     Some((graph, root_id))
 }
 
-pub(crate) fn create_mesh(
+fn create_mesh(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -134,7 +159,7 @@ pub(crate) fn create_mesh(
     );
 }
 
-pub(crate) fn sdf_to_bevy_mesh(graph: saft::Graph, root: saft::NodeId) -> Mesh {
+fn sdf_to_bevy_mesh(graph: saft::Graph, root: saft::NodeId) -> Mesh {
     use bevy::render::mesh as brm;
     let triangle_mesh = saft::mesh_from_sdf(&graph, root, saft::MeshOptions::default()).unwrap();
     let mut mesh = Mesh::new(brm::PrimitiveTopology::TriangleList);
@@ -160,7 +185,7 @@ pub(crate) fn sdf_to_bevy_mesh(graph: saft::Graph, root: saft::NodeId) -> Mesh {
     mesh
 }
 
-pub(crate) fn rebuild_mesh(
+pub fn rebuild_mesh(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -176,7 +201,7 @@ pub(crate) fn rebuild_mesh(
     );
 }
 
-pub(crate) fn keep_rebuilding_mesh(
+pub fn keep_rebuilding_mesh(
     commands: Commands,
     meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<StandardMaterial>>,
