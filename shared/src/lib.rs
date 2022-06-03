@@ -76,16 +76,16 @@ impl Node {
 pub const NODE_DEFAULTS: &[Node] = &[
     Node::Sphere {
         position: glam::Vec3::ZERO,
-        radius: 0.0,
+        radius: 1.0,
     },
     Node::Cylinder {
-        cylinder_radius: 0.0,
-        half_height: 0.0,
+        cylinder_radius: 1.0,
+        half_height: 1.0,
         rounding_radius: 0.0,
     },
     Node::Torus {
-        big_r: 0.0,
-        small_r: 0.0,
+        big_r: 1.0,
+        small_r: 0.1,
     },
     //
     Node::Union(0.0, vec![]),
