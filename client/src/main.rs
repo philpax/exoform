@@ -8,14 +8,14 @@ mod mesh_generation;
 mod ui;
 
 #[derive(Default)]
-struct OccupiedScreenSpace {
+pub struct OccupiedScreenSpace {
     left: f32,
     _top: f32,
     _right: f32,
     _bottom: f32,
 }
 #[derive(Debug)]
-struct Graph(Node);
+pub struct Graph(Node);
 struct CurrentEntity(Option<Entity>);
 struct RebuildTimer(Timer);
 
