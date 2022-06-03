@@ -28,21 +28,21 @@ pub(crate) fn render_egui_tree(
 ) -> bool {
     let color = depth_to_color(depth);
 
-    fn dragger(value: &mut f32) -> egui::widgets::DragValue {
-        egui::widgets::DragValue::new(value)
-            .fixed_decimals(2)
-            .speed(0.01)
-    }
-
-    fn vec3(ui: &mut egui::Ui, value: &mut Vec3) {
+    fn with_reset_button(ui: &mut egui::Ui, main: impl FnOnce(&mut egui::Ui)) -> bool {
+        let mut reset = false;
         ui.horizontal(|ui| {
-            ui.add(dragger(&mut value.x));
-            ui.add(dragger(&mut value.y));
-            ui.add(dragger(&mut value.z));
+            main(ui);
+            if ui
+                .small_button(egui::RichText::new("⟳").color(egui::Color32::WHITE))
+                .clicked()
+            {
+                reset = true;
+            }
         });
+        reset
     }
 
-    fn grid(ui: &mut egui::Ui, f: impl FnMut(&mut egui::Ui)) {
+    fn grid(ui: &mut egui::Ui, f: impl FnOnce(&mut egui::Ui)) {
         egui::Grid::new("rows")
             .num_columns(2)
             .spacing([40.0, 4.0])
@@ -50,12 +50,78 @@ pub(crate) fn render_egui_tree(
             .show(ui, f);
     }
 
-    fn factor_slider(ui: &mut egui::Ui, factor: &mut f32) {
-        grid(ui, |ui| {
-            ui.label("Factor");
-            ui.add(egui::widgets::Slider::new(factor, 0.0..=1.0));
-            ui.end_row();
+    fn dragger_with_no_reset(ui: &mut egui::Ui, value: &mut f32) {
+        ui.add(
+            egui::widgets::DragValue::new(value)
+                .fixed_decimals(2)
+                .speed(0.01),
+        );
+    }
+
+    fn dragger(ui: &mut egui::Ui, value: &mut f32, default_value: f32) {
+        let reset = with_reset_button(ui, |ui| {
+            dragger_with_no_reset(ui, value);
         });
+        if reset {
+            *value = default_value;
+        }
+    }
+
+    fn vec3(ui: &mut egui::Ui, value: &mut Vec3, default_value: Vec3) {
+        let reset = with_reset_button(ui, |ui| {
+            ui.horizontal(|ui| {
+                dragger_with_no_reset(ui, &mut value.x);
+                dragger_with_no_reset(ui, &mut value.y);
+                dragger_with_no_reset(ui, &mut value.z);
+            });
+        });
+        if reset {
+            *value = default_value;
+        }
+    }
+
+    fn factor_slider(ui: &mut egui::Ui, value: &mut f32, default_value: f32) {
+        let reset = with_reset_button(ui, |ui| {
+            grid(ui, |ui| {
+                ui.label("Factor");
+                ui.add(egui::widgets::Slider::new(value, 0.0..=1.0));
+                ui.end_row();
+            });
+        });
+        if reset {
+            *value = default_value;
+        }
+    }
+
+    fn angle(ui: &mut egui::Ui, value: &mut Quat, default_value: Quat) {
+        let (mut yaw, mut pitch, mut roll) = value.to_euler(glam::EulerRot::YXZ);
+        let reset = with_reset_button(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.drag_angle(&mut yaw);
+                ui.drag_angle(&mut pitch);
+                ui.drag_angle(&mut roll);
+            });
+            *value = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, roll);
+        });
+        if reset {
+            *value = default_value;
+        }
+    }
+
+    fn colour(
+        ui: &mut egui::Ui,
+        colour: (&mut f32, &mut f32, &mut f32),
+        default_value: (f32, f32, f32),
+    ) {
+        let (r, g, b) = colour;
+        let reset = with_reset_button(ui, |ui| {
+            let mut rgb = [*r, *g, *b];
+            egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
+            [*r, *g, *b] = rgb;
+        });
+        if reset {
+            (*r, *g, *b) = default_value;
+        }
     }
 
     fn render_removable_tree(
@@ -81,6 +147,10 @@ pub(crate) fn render_egui_tree(
     }
 
     let mut should_remove = false;
+    let default_for_this_node = shared::NODE_DEFAULTS
+        .iter()
+        .find(|n| std::mem::discriminant(*n) == std::mem::discriminant(&*node))
+        .unwrap();
     ui.push_id(index, |ui| {
         egui::Frame::none()
             .stroke(egui::Stroke::new(1.0, color))
@@ -110,12 +180,16 @@ pub(crate) fn render_egui_tree(
                 .body(|ui| match node {
                     Node::Sphere { position, radius } => {
                         grid(ui, |ui| {
+                            let default = match default_for_this_node.clone() {
+                                Node::Sphere { position, radius } => (position, radius),
+                                _ => unreachable!(),
+                            };
                             ui.label("Position");
-                            vec3(ui, position);
+                            vec3(ui, position, default.0);
                             ui.end_row();
 
                             ui.label("Radius");
-                            ui.add(dragger(radius));
+                            dragger(ui, radius, default.1);
                             ui.end_row();
                         });
                     }
@@ -124,34 +198,50 @@ pub(crate) fn render_egui_tree(
                         half_height,
                         rounding_radius,
                     } => {
+                        let default = match default_for_this_node.clone() {
+                            Node::Cylinder {
+                                cylinder_radius,
+                                half_height,
+                                rounding_radius,
+                            } => (cylinder_radius, half_height, rounding_radius),
+                            _ => unreachable!(),
+                        };
                         grid(ui, |ui| {
                             ui.label("Cylinder radius");
-                            ui.add(dragger(cylinder_radius));
+                            dragger(ui, cylinder_radius, default.0);
                             ui.end_row();
 
                             ui.label("Half height");
-                            ui.add(dragger(half_height));
+                            dragger(ui, half_height, default.1);
                             ui.end_row();
 
                             ui.label("Rounding radius");
-                            ui.add(dragger(rounding_radius));
+                            dragger(ui, rounding_radius, default.2);
                             ui.end_row();
                         });
                     }
                     Node::Torus { big_r, small_r } => {
+                        let default = match default_for_this_node.clone() {
+                            Node::Torus { big_r, small_r } => (big_r, small_r),
+                            _ => unreachable!(),
+                        };
                         grid(ui, |ui| {
                             ui.label("Big radius");
-                            ui.add(dragger(big_r));
+                            dragger(ui, big_r, default.0);
                             ui.end_row();
 
                             ui.label("Small radius");
-                            ui.add(dragger(small_r));
+                            dragger(ui, small_r, default.1);
                             ui.end_row();
                         });
                     }
 
                     Node::Union(factor, children) => {
-                        factor_slider(ui, factor);
+                        let default = match default_for_this_node {
+                            Node::Union(factor, ..) => *factor,
+                            _ => unreachable!(),
+                        };
+                        factor_slider(ui, factor, default);
                         let mut to_remove = vec![];
                         for (index, child) in children.iter_mut().enumerate() {
                             if render_egui_tree(ui, child, index, depth + 1) {
@@ -169,55 +259,69 @@ pub(crate) fn render_egui_tree(
                         }
                     }
                     Node::Intersect(factor, (lhs, rhs)) => {
-                        factor_slider(ui, factor);
+                        let default = match default_for_this_node {
+                            Node::Intersect(factor, ..) => *factor,
+                            _ => unreachable!(),
+                        };
+                        factor_slider(ui, factor, default);
                         render_removable_tree(ui, lhs, 0, depth);
                         render_removable_tree(ui, rhs, 1, depth);
                     }
                     Node::Subtract(factor, (lhs, rhs)) => {
-                        factor_slider(ui, factor);
+                        let default = match default_for_this_node {
+                            Node::Subtract(factor, ..) => *factor,
+                            _ => unreachable!(),
+                        };
+                        factor_slider(ui, factor, default);
                         render_removable_tree(ui, lhs, 0, depth);
                         render_removable_tree(ui, rhs, 1, depth);
                     }
 
                     Node::Rgb(r, g, b, child) => {
+                        let default = match default_for_this_node {
+                            Node::Rgb(r, g, b, _) => (*r, *g, *b),
+                            _ => unreachable!(),
+                        };
                         grid(ui, |ui| {
                             ui.label("Colour");
-                            let mut rgb = [*r, *g, *b];
-                            egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
-                            [*r, *g, *b] = rgb;
+                            colour(ui, (r, g, b), default);
                             ui.end_row();
                         });
                         render_removable_tree(ui, child, 0, depth);
                     }
 
                     Node::Translate(position, child) => {
+                        let default = match default_for_this_node {
+                            Node::Translate(position, _) => *position,
+                            _ => unreachable!(),
+                        };
                         grid(ui, |ui| {
                             ui.label("Position");
-                            vec3(ui, position);
+                            vec3(ui, position, default);
                             ui.end_row();
                         });
                         render_removable_tree(ui, child, 0, depth);
                     }
                     Node::Rotate(rotation, child) => {
+                        let default = match default_for_this_node {
+                            Node::Rotate(rot, _) => *rot,
+                            _ => unreachable!(),
+                        };
                         grid(ui, |ui| {
                             ui.label("Rotation (YPR)");
-                            let (mut yaw, mut pitch, mut roll) =
-                                rotation.to_euler(glam::EulerRot::YXZ);
-                            ui.horizontal(|ui| {
-                                ui.drag_angle(&mut yaw);
-                                ui.drag_angle(&mut pitch);
-                                ui.drag_angle(&mut roll);
-                            });
-                            *rotation =
-                                glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, roll);
+                            angle(ui, rotation, default);
                             ui.end_row();
                         });
                         render_removable_tree(ui, child, 0, depth);
                     }
                     Node::Scale(scale, child) => {
+                        let default = match default_for_this_node {
+                            Node::Scale(scale, _) => *scale,
+                            _ => unreachable!(),
+                        };
                         grid(ui, |ui| {
                             ui.label("Scale");
-                            ui.add(dragger(scale));
+                            dragger(ui, scale, default);
                             ui.end_row();
                         });
                         render_removable_tree(ui, child, 0, depth);
