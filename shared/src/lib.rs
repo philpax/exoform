@@ -26,7 +26,7 @@ pub enum NodeData {
 
     Union(f32, Vec<Node>),
     Intersect(f32, (Option<Box<Node>>, Option<Box<Node>>)),
-    Subtract(f32, (Option<Box<Node>>, Option<Box<Node>>)),
+    Subtract(f32, Vec<Node>),
 
     Rgb(f32, f32, f32, Option<Box<Node>>),
 
@@ -86,7 +86,7 @@ pub const NODE_DEFAULTS: &[NodeData] = &[
     //
     NodeData::Union(0.0, vec![]),
     NodeData::Intersect(0.0, (None, None)),
-    NodeData::Subtract(0.0, (None, None)),
+    NodeData::Subtract(0.0, vec![]),
     //
     NodeData::Rgb(1.0, 1.0, 1.0, None),
     //

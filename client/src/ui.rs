@@ -47,7 +47,9 @@ pub fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth:
                     nodes.push(node.clone());
                 }
                 NodeData::Intersect(_, (lhs, _)) => *lhs = Some(Box::new(node.clone())),
-                NodeData::Subtract(_, (lhs, _)) => *lhs = Some(Box::new(node.clone())),
+                NodeData::Subtract(_, nodes) => {
+                    nodes.push(node.clone());
+                }
                 NodeData::Rgb(_, _, _, child_node) => *child_node = Some(Box::new(node.clone())),
                 NodeData::Translate(_, child_node) => *child_node = Some(Box::new(node.clone())),
                 NodeData::Rotate(_, child_node) => *child_node = Some(Box::new(node.clone())),
@@ -186,7 +188,7 @@ pub fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth:
                 util::render_removable_tree(ui, lhs, 0, depth);
                 util::render_removable_tree(ui, rhs, 1, depth);
             }
-            NodeData::Subtract(factor, (lhs, rhs)) => {
+            NodeData::Subtract(factor, children) => {
                 let default = match default_for_this_node {
                     NodeData::Subtract(factor, ..) => *factor,
                     _ => unreachable!(),
@@ -200,8 +202,22 @@ pub fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth:
                     );
                     util::factor_slider(ui, factor, default);
                 });
-                util::render_removable_tree(ui, lhs, 0, depth);
-                util::render_removable_tree(ui, rhs, 1, depth);
+
+                let mut to_remove = vec![];
+                for (index, child) in children.iter_mut().enumerate() {
+                    if render_egui_tree(ui, child, index, depth + 1) {
+                        to_remove.push(index);
+                    }
+                }
+                to_remove.sort_unstable();
+                to_remove.reverse();
+                for r in to_remove {
+                    children.remove(r);
+                }
+
+                if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
+                    children.push(new);
+                }
             }
 
             NodeData::Rgb(r, g, b, child) => {

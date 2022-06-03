@@ -41,17 +41,24 @@ fn node_to_saft_node_data(graph: &mut saft::Graph, node_data: &NodeData) -> Opti
             (Some(lhs), None) => Some(lhs),
             _ => None,
         },
-        NodeData::Subtract(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
-            (Some(lhs), Some(rhs)) => {
-                if *size == 0.0 {
-                    Some(graph.op_subtract(lhs, rhs))
-                } else {
-                    Some(graph.op_subtract_smooth(lhs, rhs, *size))
+        NodeData::Subtract(size, nodes) => {
+            let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
+            if nodes.is_empty() {
+                None
+            } else if nodes.len() == 1 {
+                Some(nodes[0])
+            } else {
+                let mut new_node_id = nodes[0];
+                for rhs in &nodes[1..] {
+                    if *size == 0.0 {
+                        new_node_id = graph.op_subtract(new_node_id, *rhs);
+                    } else {
+                        new_node_id = graph.op_subtract_smooth(new_node_id, *rhs, *size);
+                    }
                 }
+                Some(new_node_id)
             }
-            (Some(lhs), None) => Some(lhs),
-            _ => None,
-        },
+        }
 
         NodeData::Rgb(r, g, b, node) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
