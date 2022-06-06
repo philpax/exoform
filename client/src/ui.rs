@@ -10,11 +10,27 @@ pub fn sdf_code_editor(
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
 ) {
     let ctx = egui_context.ctx_mut();
+
+    occupied_screen_space.top = egui::TopBottomPanel::top("top_panel")
+        .show(ctx, |ui| {
+            egui::menu::bar(ui, |_ui| {});
+        })
+        .response
+        .rect
+        .height();
+
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
             render_egui_tree(ui, &mut graph.0, 0, 0);
         })
+        .response
+        .rect
+        .width();
+
+    occupied_screen_space.right = egui::SidePanel::right("right_panel")
+        .default_width(400.0)
+        .show(ctx, |_ui| {})
         .response
         .rect
         .width();

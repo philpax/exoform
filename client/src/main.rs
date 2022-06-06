@@ -10,8 +10,8 @@ mod ui;
 #[derive(Default)]
 pub struct OccupiedScreenSpace {
     left: f32,
-    _top: f32,
-    _right: f32,
+    top: f32,
+    right: f32,
     _bottom: f32,
 }
 #[derive(Debug)]
