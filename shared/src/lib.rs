@@ -10,89 +10,165 @@ pub enum NodeCategory {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Sphere {
+    pub radius: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Cylinder {
+    pub cylinder_radius: f32,
+    pub half_height: f32,
+    pub rounding_radius: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Torus {
+    pub big_r: f32,
+    pub small_r: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Union {
+    pub factor: f32,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Intersect {
+    pub factor: f32,
+    pub children: (Option<Box<Node>>, Option<Box<Node>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Subtract {
+    pub factor: f32,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Rgb {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub child: Option<Box<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Translate {
+    pub position: Vec3,
+    pub child: Option<Box<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Rotate {
+    pub rotation: Quat,
+    pub child: Option<Box<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Scale {
+    pub scale: f32,
+    pub child: Option<Box<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeData {
-    Sphere {
-        radius: f32,
-    },
-    Cylinder {
-        cylinder_radius: f32,
-        half_height: f32,
-        rounding_radius: f32,
-    },
-    Torus {
-        big_r: f32,
-        small_r: f32,
-    },
+    Sphere(Sphere),
+    Cylinder(Cylinder),
+    Torus(Torus),
 
-    Union(f32, Vec<Node>),
-    Intersect(f32, (Option<Box<Node>>, Option<Box<Node>>)),
-    Subtract(f32, Vec<Node>),
+    Union(Union),
+    Intersect(Intersect),
+    Subtract(Subtract),
 
-    Rgb(f32, f32, f32, Option<Box<Node>>),
+    Rgb(Rgb),
 
-    Translate(Vec3, Option<Box<Node>>),
-    Rotate(Quat, Option<Box<Node>>),
-    Scale(f32, Option<Box<Node>>),
+    Translate(Translate),
+    Rotate(Rotate),
+    Scale(Scale),
 }
 impl NodeData {
     pub fn name(&self) -> &str {
         match self {
-            NodeData::Sphere { .. } => "Sphere",
-            NodeData::Cylinder { .. } => "Cylinder",
-            NodeData::Torus { .. } => "Torus",
+            NodeData::Sphere(_) => "Sphere",
+            NodeData::Cylinder(_) => "Cylinder",
+            NodeData::Torus(_) => "Torus",
 
-            NodeData::Union(..) => "Union",
-            NodeData::Intersect(..) => "Intersect",
-            NodeData::Subtract(..) => "Subtract",
+            NodeData::Union(_) => "Union",
+            NodeData::Intersect(_) => "Intersect",
+            NodeData::Subtract(_) => "Subtract",
 
-            NodeData::Rgb(..) => "Rgb",
+            NodeData::Rgb(_) => "Rgb",
 
-            NodeData::Translate(..) => "Translate",
-            NodeData::Rotate(..) => "Rotate",
-            NodeData::Scale(..) => "Scale",
+            NodeData::Translate(_) => "Translate",
+            NodeData::Rotate(_) => "Rotate",
+            NodeData::Scale(_) => "Scale",
         }
     }
 
     pub fn category(&self) -> NodeCategory {
         match self {
-            NodeData::Sphere { .. } => NodeCategory::Primitive,
-            NodeData::Cylinder { .. } => NodeCategory::Primitive,
-            NodeData::Torus { .. } => NodeCategory::Primitive,
+            NodeData::Sphere(_) => NodeCategory::Primitive,
+            NodeData::Cylinder(_) => NodeCategory::Primitive,
+            NodeData::Torus(_) => NodeCategory::Primitive,
 
-            NodeData::Union(..) => NodeCategory::Operation,
-            NodeData::Intersect(..) => NodeCategory::Operation,
-            NodeData::Subtract(..) => NodeCategory::Operation,
+            NodeData::Union(_) => NodeCategory::Operation,
+            NodeData::Intersect(_) => NodeCategory::Operation,
+            NodeData::Subtract(_) => NodeCategory::Operation,
 
-            NodeData::Rgb(..) => NodeCategory::Metadata,
+            NodeData::Rgb(_) => NodeCategory::Metadata,
 
-            NodeData::Translate(..) => NodeCategory::Transform,
-            NodeData::Rotate(..) => NodeCategory::Transform,
-            NodeData::Scale(..) => NodeCategory::Transform,
+            NodeData::Translate(_) => NodeCategory::Transform,
+            NodeData::Rotate(_) => NodeCategory::Transform,
+            NodeData::Scale(_) => NodeCategory::Transform,
         }
     }
 }
 
 pub const NODE_DEFAULTS: &[NodeData] = &[
-    NodeData::Sphere { radius: 1.0 },
-    NodeData::Cylinder {
+    NodeData::Sphere(Sphere { radius: 1.0 }),
+    NodeData::Cylinder(Cylinder {
         cylinder_radius: 1.0,
         half_height: 1.0,
         rounding_radius: 0.0,
-    },
-    NodeData::Torus {
+    }),
+    NodeData::Torus(Torus {
         big_r: 1.0,
         small_r: 0.1,
-    },
+    }),
     //
-    NodeData::Union(0.0, vec![]),
-    NodeData::Intersect(0.0, (None, None)),
-    NodeData::Subtract(0.0, vec![]),
+    NodeData::Union(Union {
+        factor: 0.0,
+        children: vec![],
+    }),
+    NodeData::Intersect(Intersect {
+        factor: 0.0,
+        children: (None, None),
+    }),
+    NodeData::Subtract(Subtract {
+        factor: 0.0,
+        children: vec![],
+    }),
     //
-    NodeData::Rgb(1.0, 1.0, 1.0, None),
+    NodeData::Rgb(Rgb {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        child: None,
+    }),
     //
-    NodeData::Translate(Vec3::ZERO, None),
-    NodeData::Rotate(Quat::IDENTITY, None),
-    NodeData::Scale(1.0, None),
+    NodeData::Translate(Translate {
+        position: Vec3::ZERO,
+        child: None,
+    }),
+    NodeData::Rotate(Rotate {
+        rotation: Quat::IDENTITY,
+        child: None,
+    }),
+    NodeData::Scale(Scale {
+        scale: 1.0,
+        child: None,
+    }),
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

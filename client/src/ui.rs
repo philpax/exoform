@@ -2,7 +2,10 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext};
 
 use super::{Graph, OccupiedScreenSpace};
-use shared::{Node, NodeData};
+use shared::{
+    Cylinder, Intersect, Node, NodeData, Rgb, Rotate, Scale, Sphere, Subtract, Torus, Translate,
+    Union,
+};
 
 pub fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
@@ -56,17 +59,40 @@ fn render_header(ui: &mut egui::Ui, node: &mut Node, color: egui::color::Hsva, r
 fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::color::Hsva) {
     if let Some(mut new_node) = util::render_add_parent_button(ui, color) {
         match &mut new_node.data {
-            NodeData::Union(_, nodes) => {
+            NodeData::Union(Union {
+                factor: _,
+                children: nodes,
+            }) => {
                 nodes.push(node.clone());
             }
-            NodeData::Intersect(_, (lhs, _)) => *lhs = Some(Box::new(node.clone())),
-            NodeData::Subtract(_, nodes) => {
+            NodeData::Intersect(Intersect {
+                factor: _,
+                children: (lhs, _),
+            }) => *lhs = Some(Box::new(node.clone())),
+            NodeData::Subtract(Subtract {
+                factor: _,
+                children: nodes,
+            }) => {
                 nodes.push(node.clone());
             }
-            NodeData::Rgb(_, _, _, child_node) => *child_node = Some(Box::new(node.clone())),
-            NodeData::Translate(_, child_node) => *child_node = Some(Box::new(node.clone())),
-            NodeData::Rotate(_, child_node) => *child_node = Some(Box::new(node.clone())),
-            NodeData::Scale(_, child_node) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Rgb(Rgb {
+                r: _,
+                g: _,
+                b: _,
+                child: child_node,
+            }) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Translate(Translate {
+                position: _,
+                child: child_node,
+            }) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Rotate(Rotate {
+                rotation: _,
+                child: child_node,
+            }) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Scale(Scale {
+                scale: _,
+                child: child_node,
+            }) => *child_node = Some(Box::new(node.clone())),
             _ => unreachable!(),
         }
         *node = new_node;
@@ -78,9 +104,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
         .unwrap();
 
     match &mut node.data {
-        NodeData::Sphere { radius } => {
+        NodeData::Sphere(Sphere { radius }) => {
             let default = match default_for_this_node.clone() {
-                NodeData::Sphere { radius } => radius,
+                NodeData::Sphere(Sphere { radius }) => radius,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -96,17 +122,17 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
                 ui.end_row();
             });
         }
-        NodeData::Cylinder {
+        NodeData::Cylinder(Cylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
-        } => {
+        }) => {
             let default = match default_for_this_node.clone() {
-                NodeData::Cylinder {
+                NodeData::Cylinder(Cylinder {
                     cylinder_radius,
                     half_height,
                     rounding_radius,
-                } => (cylinder_radius, half_height, rounding_radius),
+                }) => (cylinder_radius, half_height, rounding_radius),
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -130,9 +156,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
                 ui.end_row();
             });
         }
-        NodeData::Torus { big_r, small_r } => {
+        NodeData::Torus(Torus { big_r, small_r }) => {
             let default = match default_for_this_node.clone() {
-                NodeData::Torus { big_r, small_r } => (big_r, small_r),
+                NodeData::Torus(Torus { big_r, small_r }) => (big_r, small_r),
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -153,9 +179,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             });
         }
 
-        NodeData::Union(factor, children) => {
+        NodeData::Union(Union { factor, children }) => {
             let default = match default_for_this_node {
-                NodeData::Union(factor, ..) => *factor,
+                NodeData::Union(Union { factor, .. }) => *factor,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -184,9 +210,12 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
                 children.push(new);
             }
         }
-        NodeData::Intersect(factor, (lhs, rhs)) => {
+        NodeData::Intersect(Intersect {
+            factor,
+            children: (lhs, rhs),
+        }) => {
             let default = match default_for_this_node {
-                NodeData::Intersect(factor, ..) => *factor,
+                NodeData::Intersect(Intersect { factor, .. }) => *factor,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -201,9 +230,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             util::render_removable_tree(ui, lhs, 0, depth);
             util::render_removable_tree(ui, rhs, 1, depth);
         }
-        NodeData::Subtract(factor, children) => {
+        NodeData::Subtract(Subtract { factor, children }) => {
             let default = match default_for_this_node {
-                NodeData::Subtract(factor, ..) => *factor,
+                NodeData::Subtract(Subtract { factor, .. }) => *factor,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -233,9 +262,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             }
         }
 
-        NodeData::Rgb(r, g, b, child) => {
+        NodeData::Rgb(Rgb { r, g, b, child }) => {
             let default = match default_for_this_node {
-                NodeData::Rgb(r, g, b, _) => (*r, *g, *b),
+                NodeData::Rgb(Rgb { r, g, b, child: _ }) => (*r, *g, *b),
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -253,9 +282,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             util::render_removable_tree(ui, child, 0, depth);
         }
 
-        NodeData::Translate(position, child) => {
+        NodeData::Translate(Translate { position, child }) => {
             let default = match default_for_this_node {
-                NodeData::Translate(position, _) => *position,
+                NodeData::Translate(Translate { position, child: _ }) => *position,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -265,9 +294,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             });
             util::render_removable_tree(ui, child, 0, depth);
         }
-        NodeData::Rotate(rotation, child) => {
+        NodeData::Rotate(Rotate { rotation, child }) => {
             let default = match default_for_this_node {
-                NodeData::Rotate(rot, _) => *rot,
+                NodeData::Rotate(Rotate { rotation: rot, .. }) => *rot,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {
@@ -277,9 +306,9 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             });
             util::render_removable_tree(ui, child, 0, depth);
         }
-        NodeData::Scale(scale, child) => {
+        NodeData::Scale(Scale { scale, child }) => {
             let default = match default_for_this_node {
-                NodeData::Scale(scale, _) => *scale,
+                NodeData::Scale(Scale { scale, child: _ }) => *scale,
                 _ => unreachable!(),
             };
             util::grid(ui, |ui| {

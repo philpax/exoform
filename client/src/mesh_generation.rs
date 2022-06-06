@@ -1,18 +1,24 @@
 use super::{CurrentEntity, Graph, RebuildTimer};
 use bevy::prelude::*;
-use shared::{Node, NodeData};
+use shared::{
+    Cylinder, Intersect, Node, NodeData, Rgb, Rotate, Scale, Sphere, Subtract, Torus, Translate,
+    Union,
+};
 
 fn node_to_saft_node_data(graph: &mut saft::Graph, node_data: &NodeData) -> Option<saft::NodeId> {
     match node_data {
-        NodeData::Sphere { radius } => Some(graph.sphere(glam::Vec3::ZERO, *radius)),
-        NodeData::Cylinder {
+        NodeData::Sphere(Sphere { radius }) => Some(graph.sphere(glam::Vec3::ZERO, *radius)),
+        NodeData::Cylinder(Cylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
-        } => Some(graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
-        NodeData::Torus { big_r, small_r } => Some(graph.torus(*big_r, *small_r)),
+        }) => Some(graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
+        NodeData::Torus(Torus { big_r, small_r }) => Some(graph.torus(*big_r, *small_r)),
 
-        NodeData::Union(size, nodes) => {
+        NodeData::Union(Union {
+            factor: size,
+            children: nodes,
+        }) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.is_empty() {
                 return None;
@@ -30,7 +36,10 @@ fn node_to_saft_node_data(graph: &mut saft::Graph, node_data: &NodeData) -> Opti
                 Some(graph.op_union_multi_smooth(nodes, *size))
             }
         }
-        NodeData::Intersect(size, nodes) => match lhs_rhs_to_saft_nodes(graph, nodes) {
+        NodeData::Intersect(Intersect {
+            factor: size,
+            children: nodes,
+        }) => match lhs_rhs_to_saft_nodes(graph, nodes) {
             (Some(lhs), Some(rhs)) => {
                 if *size == 0.0 {
                     Some(graph.op_intersect(lhs, rhs))
@@ -41,7 +50,10 @@ fn node_to_saft_node_data(graph: &mut saft::Graph, node_data: &NodeData) -> Opti
             (Some(lhs), None) => Some(lhs),
             _ => None,
         },
-        NodeData::Subtract(size, nodes) => {
+        NodeData::Subtract(Subtract {
+            factor: size,
+            children: nodes,
+        }) => {
             let nodes: Vec<_> = nodes_to_saft_nodes(graph, nodes.as_slice());
             if nodes.is_empty() {
                 None
@@ -60,20 +72,31 @@ fn node_to_saft_node_data(graph: &mut saft::Graph, node_data: &NodeData) -> Opti
             }
         }
 
-        NodeData::Rgb(r, g, b, node) => {
+        NodeData::Rgb(Rgb {
+            r,
+            g,
+            b,
+            child: node,
+        }) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph.op_rgb(child, [*r, *g, *b]))
         }
 
-        NodeData::Translate(position, node) => {
+        NodeData::Translate(Translate {
+            position,
+            child: node,
+        }) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph_translate(graph, child, position))
         }
-        NodeData::Rotate(rotation, node) => {
+        NodeData::Rotate(Rotate {
+            rotation,
+            child: node,
+        }) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph_rotate(graph, child, rotation))
         }
-        NodeData::Scale(scale, node) => {
+        NodeData::Scale(Scale { scale, child: node }) => {
             let child = node_to_saft_node(graph, node.as_deref()?)?;
             Some(graph.op_scale(child, *scale))
         }

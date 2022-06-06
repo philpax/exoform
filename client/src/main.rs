@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
-use shared::{Node, NodeData};
+use shared::{Node, NodeData, Union};
 
 mod camera;
 mod mesh_generation;
@@ -20,7 +20,10 @@ pub struct CurrentEntity(Option<Entity>);
 pub struct RebuildTimer(Timer);
 
 fn build_sample_graph() -> Node {
-    Node::default_with_data(NodeData::Union(0.0, vec![]))
+    Node::default_with_data(NodeData::Union(Union {
+        factor: 0.0,
+        children: vec![],
+    }))
 }
 
 pub fn main() {
