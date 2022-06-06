@@ -36,281 +36,284 @@ pub fn sdf_code_editor(
         .width();
 }
 
+fn render_header(ui: &mut egui::Ui, node: &mut Node, color: egui::color::Hsva, remove: &mut bool) {
+    ui.label(
+        egui::RichText::new(node.data.name())
+            .color(color)
+            .text_style(egui::TextStyle::Monospace),
+    );
+
+    ui.add_space(ui.available_width() - ui.spacing().interact_size.x);
+
+    if ui
+        .small_button(egui::RichText::new("X").color(egui::Color32::LIGHT_RED))
+        .clicked()
+    {
+        *remove = true;
+    }
+}
+
+fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::color::Hsva) {
+    if let Some(mut new_node) = util::render_add_parent_button(ui, color) {
+        match &mut new_node.data {
+            NodeData::Union(_, nodes) => {
+                nodes.push(node.clone());
+            }
+            NodeData::Intersect(_, (lhs, _)) => *lhs = Some(Box::new(node.clone())),
+            NodeData::Subtract(_, nodes) => {
+                nodes.push(node.clone());
+            }
+            NodeData::Rgb(_, _, _, child_node) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Translate(_, child_node) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Rotate(_, child_node) => *child_node = Some(Box::new(node.clone())),
+            NodeData::Scale(_, child_node) => *child_node = Some(Box::new(node.clone())),
+            _ => unreachable!(),
+        }
+        *node = new_node;
+    }
+
+    let default_for_this_node = shared::NODE_DEFAULTS
+        .iter()
+        .find(|n| std::mem::discriminant(*n) == std::mem::discriminant(&node.data))
+        .unwrap();
+
+    match &mut node.data {
+        NodeData::Sphere { radius } => {
+            let default = match default_for_this_node.clone() {
+                NodeData::Sphere { radius } => radius,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+
+                ui.label("Radius");
+                util::dragger(ui, radius, default);
+                ui.end_row();
+            });
+        }
+        NodeData::Cylinder {
+            cylinder_radius,
+            half_height,
+            rounding_radius,
+        } => {
+            let default = match default_for_this_node.clone() {
+                NodeData::Cylinder {
+                    cylinder_radius,
+                    half_height,
+                    rounding_radius,
+                } => (cylinder_radius, half_height, rounding_radius),
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+
+                ui.label("Cylinder radius");
+                util::dragger(ui, cylinder_radius, default.0);
+                ui.end_row();
+
+                ui.label("Half height");
+                util::dragger(ui, half_height, default.1);
+                ui.end_row();
+
+                ui.label("Rounding radius");
+                util::dragger(ui, rounding_radius, default.2);
+                ui.end_row();
+            });
+        }
+        NodeData::Torus { big_r, small_r } => {
+            let default = match default_for_this_node.clone() {
+                NodeData::Torus { big_r, small_r } => (big_r, small_r),
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+
+                ui.label("Big radius");
+                util::dragger(ui, big_r, default.0);
+                ui.end_row();
+
+                ui.label("Small radius");
+                util::dragger(ui, small_r, default.1);
+                ui.end_row();
+            });
+        }
+
+        NodeData::Union(factor, children) => {
+            let default = match default_for_this_node {
+                NodeData::Union(factor, ..) => *factor,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+                util::factor_slider(ui, factor, default);
+            });
+
+            let mut to_remove = vec![];
+            for (index, child) in children.iter_mut().enumerate() {
+                if render_egui_tree(ui, child, index, depth + 1) {
+                    to_remove.push(index);
+                }
+            }
+            to_remove.sort_unstable();
+            to_remove.reverse();
+            for r in to_remove {
+                children.remove(r);
+            }
+
+            if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
+                children.push(new);
+            }
+        }
+        NodeData::Intersect(factor, (lhs, rhs)) => {
+            let default = match default_for_this_node {
+                NodeData::Intersect(factor, ..) => *factor,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+                util::factor_slider(ui, factor, default);
+            });
+            util::render_removable_tree(ui, lhs, 0, depth);
+            util::render_removable_tree(ui, rhs, 1, depth);
+        }
+        NodeData::Subtract(factor, children) => {
+            let default = match default_for_this_node {
+                NodeData::Subtract(factor, ..) => *factor,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+                util::factor_slider(ui, factor, default);
+            });
+
+            let mut to_remove = vec![];
+            for (index, child) in children.iter_mut().enumerate() {
+                if render_egui_tree(ui, child, index, depth + 1) {
+                    to_remove.push(index);
+                }
+            }
+            to_remove.sort_unstable();
+            to_remove.reverse();
+            for r in to_remove {
+                children.remove(r);
+            }
+
+            if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
+                children.push(new);
+            }
+        }
+
+        NodeData::Rgb(r, g, b, child) => {
+            let default = match default_for_this_node {
+                NodeData::Rgb(r, g, b, _) => (*r, *g, *b),
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                util::render_transform(
+                    ui,
+                    &mut node.translation,
+                    &mut node.rotation,
+                    &mut node.scale,
+                );
+
+                ui.label("Colour");
+                util::colour(ui, (r, g, b), default);
+                ui.end_row();
+            });
+            util::render_removable_tree(ui, child, 0, depth);
+        }
+
+        NodeData::Translate(position, child) => {
+            let default = match default_for_this_node {
+                NodeData::Translate(position, _) => *position,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                ui.label("Position");
+                util::vec3(ui, position, default);
+                ui.end_row();
+            });
+            util::render_removable_tree(ui, child, 0, depth);
+        }
+        NodeData::Rotate(rotation, child) => {
+            let default = match default_for_this_node {
+                NodeData::Rotate(rot, _) => *rot,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                ui.label("Rotation (YPR)");
+                util::angle(ui, rotation, default);
+                ui.end_row();
+            });
+            util::render_removable_tree(ui, child, 0, depth);
+        }
+        NodeData::Scale(scale, child) => {
+            let default = match default_for_this_node {
+                NodeData::Scale(scale, _) => *scale,
+                _ => unreachable!(),
+            };
+            util::grid(ui, |ui| {
+                ui.label("Scale");
+                util::dragger(ui, scale, default);
+                ui.end_row();
+            });
+            util::render_removable_tree(ui, child, 0, depth);
+        }
+    }
+}
+
 pub fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usize) -> bool {
     let color = util::depth_to_color(depth);
 
-    let mut should_remove = false;
-    let mut header_renderer = |ui: &mut egui::Ui, node: &mut Node| {
-        ui.label(
-            egui::RichText::new(node.data.name())
-                .color(color)
-                .text_style(egui::TextStyle::Monospace),
-        );
-
-        ui.add_space(ui.available_width() - ui.spacing().interact_size.x);
-
-        if ui
-            .small_button(egui::RichText::new("X").color(egui::Color32::LIGHT_RED))
-            .clicked()
-        {
-            should_remove = true;
-        }
-    };
-    let body_renderer = |ui: &mut egui::Ui, node: &mut Node| {
-        if let Some(mut new_node) = util::render_add_parent_button(ui, color) {
-            match &mut new_node.data {
-                NodeData::Union(_, nodes) => {
-                    nodes.push(node.clone());
-                }
-                NodeData::Intersect(_, (lhs, _)) => *lhs = Some(Box::new(node.clone())),
-                NodeData::Subtract(_, nodes) => {
-                    nodes.push(node.clone());
-                }
-                NodeData::Rgb(_, _, _, child_node) => *child_node = Some(Box::new(node.clone())),
-                NodeData::Translate(_, child_node) => *child_node = Some(Box::new(node.clone())),
-                NodeData::Rotate(_, child_node) => *child_node = Some(Box::new(node.clone())),
-                NodeData::Scale(_, child_node) => *child_node = Some(Box::new(node.clone())),
-                _ => unreachable!(),
-            }
-            *node = new_node;
-        }
-
-        let default_for_this_node = shared::NODE_DEFAULTS
-            .iter()
-            .find(|n| std::mem::discriminant(*n) == std::mem::discriminant(&node.data))
-            .unwrap();
-
-        match &mut node.data {
-            NodeData::Sphere { radius } => {
-                let default = match default_for_this_node.clone() {
-                    NodeData::Sphere { radius } => radius,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-
-                    ui.label("Radius");
-                    util::dragger(ui, radius, default);
-                    ui.end_row();
-                });
-            }
-            NodeData::Cylinder {
-                cylinder_radius,
-                half_height,
-                rounding_radius,
-            } => {
-                let default = match default_for_this_node.clone() {
-                    NodeData::Cylinder {
-                        cylinder_radius,
-                        half_height,
-                        rounding_radius,
-                    } => (cylinder_radius, half_height, rounding_radius),
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-
-                    ui.label("Cylinder radius");
-                    util::dragger(ui, cylinder_radius, default.0);
-                    ui.end_row();
-
-                    ui.label("Half height");
-                    util::dragger(ui, half_height, default.1);
-                    ui.end_row();
-
-                    ui.label("Rounding radius");
-                    util::dragger(ui, rounding_radius, default.2);
-                    ui.end_row();
-                });
-            }
-            NodeData::Torus { big_r, small_r } => {
-                let default = match default_for_this_node.clone() {
-                    NodeData::Torus { big_r, small_r } => (big_r, small_r),
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-
-                    ui.label("Big radius");
-                    util::dragger(ui, big_r, default.0);
-                    ui.end_row();
-
-                    ui.label("Small radius");
-                    util::dragger(ui, small_r, default.1);
-                    ui.end_row();
-                });
-            }
-
-            NodeData::Union(factor, children) => {
-                let default = match default_for_this_node {
-                    NodeData::Union(factor, ..) => *factor,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-                    util::factor_slider(ui, factor, default);
-                });
-
-                let mut to_remove = vec![];
-                for (index, child) in children.iter_mut().enumerate() {
-                    if render_egui_tree(ui, child, index, depth + 1) {
-                        to_remove.push(index);
-                    }
-                }
-                to_remove.sort_unstable();
-                to_remove.reverse();
-                for r in to_remove {
-                    children.remove(r);
-                }
-
-                if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
-                    children.push(new);
-                }
-            }
-            NodeData::Intersect(factor, (lhs, rhs)) => {
-                let default = match default_for_this_node {
-                    NodeData::Intersect(factor, ..) => *factor,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-                    util::factor_slider(ui, factor, default);
-                });
-                util::render_removable_tree(ui, lhs, 0, depth);
-                util::render_removable_tree(ui, rhs, 1, depth);
-            }
-            NodeData::Subtract(factor, children) => {
-                let default = match default_for_this_node {
-                    NodeData::Subtract(factor, ..) => *factor,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-                    util::factor_slider(ui, factor, default);
-                });
-
-                let mut to_remove = vec![];
-                for (index, child) in children.iter_mut().enumerate() {
-                    if render_egui_tree(ui, child, index, depth + 1) {
-                        to_remove.push(index);
-                    }
-                }
-                to_remove.sort_unstable();
-                to_remove.reverse();
-                for r in to_remove {
-                    children.remove(r);
-                }
-
-                if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
-                    children.push(new);
-                }
-            }
-
-            NodeData::Rgb(r, g, b, child) => {
-                let default = match default_for_this_node {
-                    NodeData::Rgb(r, g, b, _) => (*r, *g, *b),
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    util::render_transform(
-                        ui,
-                        &mut node.translation,
-                        &mut node.rotation,
-                        &mut node.scale,
-                    );
-
-                    ui.label("Colour");
-                    util::colour(ui, (r, g, b), default);
-                    ui.end_row();
-                });
-                util::render_removable_tree(ui, child, 0, depth);
-            }
-
-            NodeData::Translate(position, child) => {
-                let default = match default_for_this_node {
-                    NodeData::Translate(position, _) => *position,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    ui.label("Position");
-                    util::vec3(ui, position, default);
-                    ui.end_row();
-                });
-                util::render_removable_tree(ui, child, 0, depth);
-            }
-            NodeData::Rotate(rotation, child) => {
-                let default = match default_for_this_node {
-                    NodeData::Rotate(rot, _) => *rot,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    ui.label("Rotation (YPR)");
-                    util::angle(ui, rotation, default);
-                    ui.end_row();
-                });
-                util::render_removable_tree(ui, child, 0, depth);
-            }
-            NodeData::Scale(scale, child) => {
-                let default = match default_for_this_node {
-                    NodeData::Scale(scale, _) => *scale,
-                    _ => unreachable!(),
-                };
-                util::grid(ui, |ui| {
-                    ui.label("Scale");
-                    util::dragger(ui, scale, default);
-                    ui.end_row();
-                });
-                util::render_removable_tree(ui, child, 0, depth);
-            }
-        }
-    };
-
-    let renderer = |ui: &mut egui::Ui| {
-        let name = node.data.name();
-        let id = ui.make_persistent_id(name);
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
-            .show_header(ui, |ui| header_renderer(ui, node))
-            .body(|ui| body_renderer(ui, node));
-    };
-
+    let mut remove = false;
     ui.push_id(index, |ui| {
         egui::Frame::none()
             .stroke(egui::Stroke::new(1.0, color))
             .inner_margin(egui::style::Margin::same(2.0))
-            .show(ui, renderer);
+            .show(ui, |ui: &mut egui::Ui| {
+                let name = node.data.name();
+                let id = ui.make_persistent_id(name);
+                egui::collapsing_header::CollapsingState::load_with_default_open(
+                    ui.ctx(),
+                    id,
+                    true,
+                )
+                .show_header(ui, |ui| render_header(ui, node, color, &mut remove))
+                .body(|ui| render_body(ui, node, depth, color));
+            });
     });
 
-    should_remove
+    remove
 }
 
 mod util {
