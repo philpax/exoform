@@ -70,7 +70,7 @@ fn setup(mut commands: Commands) {
     let target = Vec3::new(0., 0., 0.);
     let transform = Transform::from_translation(eye).looking_at(target, Vec3::Y);
     commands
-        .spawn_bundle(PerspectiveCameraBundle {
+        .spawn_bundle(Camera3dBundle {
             transform,
             ..Default::default()
         })

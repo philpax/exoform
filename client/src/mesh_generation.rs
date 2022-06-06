@@ -185,7 +185,7 @@ fn sdf_to_bevy_mesh(graph: saft::Graph, root: saft::NodeId) -> Mesh {
         triangle_mesh
             .colors
             .into_iter()
-            .map(|[r, g, b]| Color::rgb(r, g, b).as_rgba_u32())
+            .map(|[r, g, b]| Color::rgb(r, g, b).as_linear_rgba_f32())
             .collect::<Vec<_>>(),
     );
     mesh.set_indices(Some(brm::Indices::U32(triangle_mesh.indices)));

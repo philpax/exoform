@@ -1,3 +1,6 @@
 [workspace]
 members = ["client", "server", "shared"]
 resolver = "2"
+
+[patch.crates-io]
+bevy = {git = 'https://github.com/bevyengine/bevy.git'}

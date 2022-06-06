@@ -1,4 +1,4 @@
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{input::mouse::MouseMotion, prelude::*, render::camera::Projection};
 use bevy_egui::EguiContext;
 
 use super::OccupiedScreenSpace;
@@ -28,7 +28,12 @@ pub(crate) fn pan_orbit_camera(
     mut ev_motion: EventReader<MouseMotion>,
     input_mouse: Res<Input<MouseButton>>,
     mut egui_context: ResMut<EguiContext>,
-    mut query: Query<(&mut PanOrbitCamera, &mut Transform, &PerspectiveProjection)>,
+    mut query: Query<(
+        &mut PanOrbitCamera,
+        &mut Transform,
+        &Projection,
+        With<Camera3d>,
+    )>,
 ) {
     let orbit_button = MouseButton::Left;
     let pan_button = MouseButton::Middle;
@@ -64,13 +69,18 @@ pub(crate) fn pan_orbit_camera(
     }
 
     let window = get_primary_window_size(&windows);
-    for (mut pan_orbit, mut transform, projection) in query.iter_mut() {
+    for (mut pan_orbit, mut transform, projection, _) in query.iter_mut() {
         if orbit_button_changed {
             // only check for upside down when orbiting started or ended this frame
             // if the camera is "upside" down, panning horizontally would be inverted, so invert the input to make it correct
             let up = transform.rotation * Vec3::Y;
             pan_orbit.upside_down = up.y <= 0.0;
         }
+
+        let projection = match projection {
+            Projection::Perspective(projection) => projection,
+            Projection::Orthographic(_) => continue,
+        };
 
         if rotation_move.length_squared() > 0.0 {
             let (yaw, pitch) = {

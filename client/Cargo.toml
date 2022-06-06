@@ -8,15 +8,15 @@ version = "0.1.0"
 
 [dependencies]
 anyhow = "1.0.57"
-bevy = "0.7"
-bevy_egui = "0.14.0"
-bevy_web_fullscreen = {git = "https://github.com/oscrim/bevy_web_fullscreen.git"}
+bevy = "0.8.0-dev"
+bevy_egui = {git = "https://github.com/exjam/bevy_egui.git", branch = "fix_bevy_main"}
 bimap = "0.6.2"
 glam = "0.20.5"
 saft = "0.30.0"
 shared = {path = "../shared"}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy_web_fullscreen = {git = "https://github.com/oscrim/bevy_web_fullscreen.git"}
 console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
 js-sys = "0.3.57"
