@@ -14,13 +14,32 @@ pub enum NodeCategory {
     Transform,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Transform {
+    pub translation: Vec3,
+    pub rotation: Quat,
+    pub scale: f32,
+}
+impl Transform {
+    pub const fn new() -> Self {
+        Self {
+            translation: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: 1.0,
+        }
+    }
+}
+impl Default for Transform {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
     pub rgb: (f32, f32, f32),
-    pub translation: Vec3,
-    pub rotation: Quat,
-    pub scale: f32,
+    pub transform: Transform,
     pub data: NodeData,
 }
 impl Node {
@@ -30,9 +49,7 @@ impl Node {
         Node {
             id,
             rgb: Self::DEFAULT_COLOUR,
-            translation: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
-            scale: 1.0,
+            transform: Transform::new(),
             data,
         }
     }

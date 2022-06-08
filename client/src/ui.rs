@@ -391,14 +391,13 @@ mod util {
 
     pub fn render_transform(
         ui: &mut egui::Ui,
-        translation: Vec3,
-        rotation: Quat,
-        scale: f32,
+        transform: &shared::Transform,
     ) -> (Option<Vec3>, Option<Quat>, Option<f32>) {
+        let tr = transform;
         (
-            with_label(ui, "Translation", |ui| vec3(ui, translation, Vec3::ZERO)),
-            with_label(ui, "Rotation", |ui| angle(ui, rotation, Quat::IDENTITY)),
-            with_label(ui, "Scale", |ui| dragger(ui, scale, 1.0)),
+            with_label(ui, "Translation", |ui| vec3(ui, tr.translation, Vec3::ZERO)),
+            with_label(ui, "Rotation", |ui| angle(ui, tr.rotation, Quat::IDENTITY)),
+            with_label(ui, "Scale", |ui| dragger(ui, tr.scale, 1.0)),
         )
     }
 
@@ -419,8 +418,7 @@ mod util {
         ui: &mut egui::Ui,
         node: &Node,
     ) -> impl Iterator<Item = GraphEvent> {
-        let (translation, rotation, scale) =
-            render_transform(ui, node.translation, node.rotation, node.scale);
+        let (translation, rotation, scale) = render_transform(ui, &node.transform);
         let translation = translation.map(|t| GraphEvent::SetTranslation(node.id, t));
         let rotation = rotation.map(|r| GraphEvent::SetRotation(node.id, r));
         let scale = scale.map(|s| GraphEvent::SetScale(node.id, s));

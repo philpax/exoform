@@ -34,16 +34,17 @@ fn node_to_saft_node(
 ) -> Option<saft::NodeId> {
     let node = graph.get(node).unwrap();
     let mut node_id = node_to_saft_node_data(saft_graph, graph, &node.data)?;
-    if node.scale != 1.0 {
-        node_id = saft_graph.op_scale(node_id, node.scale)
+    let transform = &node.transform;
+    if transform.scale != 1.0 {
+        node_id = saft_graph.op_scale(node_id, transform.scale);
     }
 
-    if !node.rotation.is_near_identity() {
-        node_id = saft_graph_rotate(saft_graph, node_id, &node.rotation);
-    };
+    if !transform.rotation.is_near_identity() {
+        node_id = saft_graph_rotate(saft_graph, node_id, &transform.rotation);
+    }
 
-    if node.translation.length_squared() != 0.0 {
-        node_id = saft_graph_translate(saft_graph, node_id, &node.translation)
+    if transform.translation.length_squared() != 0.0 {
+        node_id = saft_graph_translate(saft_graph, node_id, &transform.translation);
     }
 
     if node.rgb != (1.0, 1.0, 1.0) {

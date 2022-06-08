@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
-use crate::node_data::*;
+use crate::{node_data::*, Transform};
 use crate::{Node, NodeId};
 
 #[derive(Debug)]
@@ -142,8 +142,19 @@ impl Graph {
                 self.get_mut(*parent_id)?.data.remove_child(*child_id);
             }
             GraphEvent::AddNewParent(parent_id, child_id, node_data) => {
+                let child_transform = self.get(*child_id)?.transform;
+
                 let new_parent_id = self.add(node_data.clone());
-                self.get_mut(new_parent_id)?.data.add_child(None, *child_id);
+                {
+                    let parent = self.get_mut(new_parent_id)?;
+                    parent.data.add_child(None, *child_id);
+                    parent.transform = child_transform;
+                }
+
+                {
+                    let child = self.get_mut(*child_id)?;
+                    child.transform = Transform::new();
+                }
 
                 let parent = self.get_mut(*parent_id)?;
                 parent.data.replace_child(*child_id, new_parent_id);
@@ -155,13 +166,13 @@ impl Graph {
                 self.get_mut(*node_id)?.rgb = *rgb;
             }
             GraphEvent::SetTranslation(node_id, translation) => {
-                self.get_mut(*node_id)?.translation = *translation;
+                self.get_mut(*node_id)?.transform.translation = *translation;
             }
             GraphEvent::SetRotation(node_id, rotation) => {
-                self.get_mut(*node_id)?.rotation = *rotation;
+                self.get_mut(*node_id)?.transform.rotation = *rotation;
             }
             GraphEvent::SetScale(node_id, scale) => {
-                self.get_mut(*node_id)?.scale = *scale;
+                self.get_mut(*node_id)?.transform.scale = *scale;
             }
         }
 
