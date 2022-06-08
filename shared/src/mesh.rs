@@ -46,6 +46,10 @@ fn node_to_saft_node(
         node_id = saft_graph_translate(saft_graph, node_id, &node.translation)
     }
 
+    if node.rgb != (1.0, 1.0, 1.0) {
+        node_id = saft_graph.op_rgb(node_id, [node.rgb.0, node.rgb.1, node.rgb.2]);
+    }
+
     Some(node_id)
 }
 

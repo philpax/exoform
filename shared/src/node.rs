@@ -17,15 +17,19 @@ pub enum NodeCategory {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
+    pub rgb: (f32, f32, f32),
     pub translation: Vec3,
     pub rotation: Quat,
     pub scale: f32,
     pub data: NodeData,
 }
 impl Node {
+    pub const DEFAULT_COLOUR: (f32, f32, f32) = (1.0, 1.0, 1.0);
+
     pub const fn new(id: NodeId, data: NodeData) -> Node {
         Node {
             id,
+            rgb: Self::DEFAULT_COLOUR,
             translation: Vec3::ZERO,
             rotation: Quat::IDENTITY,
             scale: 1.0,

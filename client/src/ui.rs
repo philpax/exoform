@@ -87,7 +87,7 @@ fn render_body(
         NodeData::Sphere(Sphere { radius }) => {
             let default = Sphere::default();
             util::grid(ui, |ui| {
-                events.extend(util::render_transform_with_events(ui, node));
+                events.extend(util::render_node_prelude_with_events(ui, node));
 
                 if let Some(radius) = util::dragger_row(ui, "Radius", *radius, default.radius) {
                     events.push(GraphEvent::ReplaceData(
@@ -104,7 +104,7 @@ fn render_body(
         }) => {
             let default = Cylinder::default();
             util::grid(ui, |ui| {
-                events.extend(util::render_transform_with_events(ui, node));
+                events.extend(util::render_node_prelude_with_events(ui, node));
 
                 let new_cylinder_radius = util::dragger_row(
                     ui,
@@ -137,7 +137,7 @@ fn render_body(
         NodeData::Torus(Torus { big_r, small_r }) => {
             let default = Torus::default();
             util::grid(ui, |ui| {
-                events.extend(util::render_transform_with_events(ui, node));
+                events.extend(util::render_node_prelude_with_events(ui, node));
 
                 let new_big_r = util::dragger_row(ui, "Big radius", *big_r, default.big_r);
                 let new_small_r = util::dragger_row(ui, "Small radius", *small_r, default.small_r);
@@ -429,7 +429,7 @@ mod util {
         default_value: f32,
     ) -> Option<f32> {
         grid(ui, |ui| {
-            events.extend(render_transform_with_events(ui, node));
+            events.extend(render_node_prelude_with_events(ui, node));
             factor_slider(ui, value, default_value)
         })
     }
@@ -481,6 +481,19 @@ mod util {
         )
     }
 
+    pub fn render_colour_with_events(
+        ui: &mut egui::Ui,
+        node: &Node,
+    ) -> impl Iterator<Item = GraphEvent> {
+        let new_colour = with_label(ui, "Colour", |ui| {
+            colour(ui, node.rgb, Node::DEFAULT_COLOUR)
+        });
+
+        new_colour
+            .map(|rgb| GraphEvent::SetColour(node.id, rgb))
+            .into_iter()
+    }
+
     pub fn render_transform_with_events(
         ui: &mut egui::Ui,
         node: &Node,
@@ -495,6 +508,13 @@ mod util {
             .into_iter()
             .chain(rotation.into_iter())
             .chain(scale.into_iter())
+    }
+
+    pub fn render_node_prelude_with_events(
+        ui: &mut egui::Ui,
+        node: &Node,
+    ) -> impl Iterator<Item = GraphEvent> {
+        render_colour_with_events(ui, node).chain(render_transform_with_events(ui, node))
     }
 
     pub fn render_add_dropdown(

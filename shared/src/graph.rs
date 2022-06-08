@@ -40,6 +40,7 @@ pub enum GraphEvent {
 
     ReplaceData(NodeId, NodeData),
 
+    SetColour(NodeId, (f32, f32, f32)),
     SetTranslation(NodeId, Vec3),
     SetRotation(NodeId, Quat),
     SetScale(NodeId, f32),
@@ -164,6 +165,9 @@ impl Graph {
 
             GraphEvent::ReplaceData(node_id, data) => self.get_mut(*node_id)?.data = data.clone(),
 
+            GraphEvent::SetColour(node_id, rgb) => {
+                self.get_mut(*node_id)?.rgb = *rgb;
+            }
             GraphEvent::SetTranslation(node_id, translation) => {
                 self.get_mut(*node_id)?.translation = *translation;
             }
