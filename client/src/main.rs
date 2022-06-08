@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
-use shared::{Node, NodeData, Union};
+use shared::NodeData;
 
 mod camera;
 mod mesh_generation;
@@ -14,17 +14,9 @@ pub struct OccupiedScreenSpace {
     right: f32,
     _bottom: f32,
 }
-#[derive(Debug)]
-pub struct Graph(Node);
+
 pub struct CurrentEntity(Option<Entity>);
 pub struct RebuildTimer(Timer);
-
-fn build_sample_graph() -> Node {
-    Node::default_with_data(NodeData::Union(Union {
-        factor: 0.0,
-        children: vec![],
-    }))
-}
 
 pub fn main() {
     #[cfg(target_arch = "wasm32")]
@@ -33,7 +25,7 @@ pub fn main() {
     let mut app = App::new();
     app.insert_resource(Msaa { samples: 4 })
         .insert_resource(bevy::winit::WinitSettings::desktop_app())
-        .insert_resource(Graph(build_sample_graph()))
+        .insert_resource(shared::Graph::new(NodeData::Union(shared::Union::new())))
         .insert_resource(CurrentEntity(None))
         .insert_resource(RebuildTimer(Timer::new(
             std::time::Duration::from_secs_f32(0.2),

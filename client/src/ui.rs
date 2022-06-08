@@ -1,10 +1,10 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext};
 
-use super::{Graph, OccupiedScreenSpace};
+use super::OccupiedScreenSpace;
 use shared::{
-    Cylinder, Intersect, Node, NodeData, Rgb, Rotate, Scale, Sphere, Subtract, Torus, Translate,
-    Union,
+    Cylinder, Graph, GraphEvent, Intersect, NodeData, NodeId, Rgb, Rotate, Scale, Sphere, Subtract,
+    Torus, Translate, Union,
 };
 
 pub fn sdf_code_editor(
@@ -25,7 +25,9 @@ pub fn sdf_code_editor(
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
-            render_egui_tree(ui, &mut graph.0, 0, 0);
+            let node_id = graph.root_node_id;
+            let (events, _) = render_egui_tree(ui, &graph, None, node_id, 0);
+            graph.apply_events(&events);
         })
         .response
         .rect
@@ -39,7 +41,14 @@ pub fn sdf_code_editor(
         .width();
 }
 
-fn render_header(ui: &mut egui::Ui, node: &mut Node, color: egui::color::Hsva, remove: &mut bool) {
+fn render_header(
+    ui: &mut egui::Ui,
+    graph: &Graph,
+    node_id: NodeId,
+    color: egui::color::Hsva,
+    remove: &mut bool,
+) {
+    let node = graph.get(node_id).unwrap();
     ui.label(
         egui::RichText::new(node.data.name())
             .color(color)
@@ -56,70 +65,36 @@ fn render_header(ui: &mut egui::Ui, node: &mut Node, color: egui::color::Hsva, r
     }
 }
 
-fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::color::Hsva) {
-    if let Some(mut new_node) = util::render_add_parent_button(ui, color) {
-        match &mut new_node.data {
-            NodeData::Union(Union {
-                factor: _,
-                children: nodes,
-            }) => {
-                nodes.push(node.clone());
-            }
-            NodeData::Intersect(Intersect {
-                factor: _,
-                children: (lhs, _),
-            }) => *lhs = Some(Box::new(node.clone())),
-            NodeData::Subtract(Subtract {
-                factor: _,
-                children: nodes,
-            }) => {
-                nodes.push(node.clone());
-            }
-            NodeData::Rgb(Rgb {
-                r: _,
-                g: _,
-                b: _,
-                child: child_node,
-            }) => *child_node = Some(Box::new(node.clone())),
-            NodeData::Translate(Translate {
-                position: _,
-                child: child_node,
-            }) => *child_node = Some(Box::new(node.clone())),
-            NodeData::Rotate(Rotate {
-                rotation: _,
-                child: child_node,
-            }) => *child_node = Some(Box::new(node.clone())),
-            NodeData::Scale(Scale {
-                scale: _,
-                child: child_node,
-            }) => *child_node = Some(Box::new(node.clone())),
-            _ => unreachable!(),
+fn render_body(
+    ui: &mut egui::Ui,
+    graph: &Graph,
+    parent_node_id: Option<NodeId>,
+    node_id: NodeId,
+    depth: usize,
+) -> Vec<GraphEvent> {
+    let mut events = vec![];
+
+    if let Some(parent_node_id) = parent_node_id {
+        if let Some(node_data) =
+            util::render_add_button(ui, "Add Parent", false, util::depth_to_color(depth))
+        {
+            events.push(GraphEvent::AddNewParent(parent_node_id, node_id, node_data));
         }
-        *node = new_node;
     }
 
-    let default_for_this_node = shared::NODE_DEFAULTS
-        .iter()
-        .find(|n| std::mem::discriminant(*n) == std::mem::discriminant(&node.data))
-        .unwrap();
-
-    match &mut node.data {
+    let node = graph.get(node_id).unwrap();
+    match &node.data {
         NodeData::Sphere(Sphere { radius }) => {
-            let default = match default_for_this_node.clone() {
-                NodeData::Sphere(Sphere { radius }) => radius,
-                _ => unreachable!(),
-            };
+            let default = Sphere::default();
             util::grid(ui, |ui| {
-                util::render_transform(
-                    ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
-                );
+                events.extend(util::render_transform_with_events(ui, node));
 
-                ui.label("Radius");
-                util::dragger(ui, radius, default);
-                ui.end_row();
+                if let Some(radius) = util::dragger_row(ui, "Radius", *radius, default.radius) {
+                    events.push(GraphEvent::ReplaceData(
+                        node_id,
+                        NodeData::Sphere(Sphere { radius }),
+                    ));
+                }
             });
         }
         NodeData::Cylinder(Cylinder {
@@ -127,370 +102,406 @@ fn render_body(ui: &mut egui::Ui, node: &mut Node, depth: usize, color: egui::co
             half_height,
             rounding_radius,
         }) => {
-            let default = match default_for_this_node.clone() {
-                NodeData::Cylinder(Cylinder {
-                    cylinder_radius,
-                    half_height,
-                    rounding_radius,
-                }) => (cylinder_radius, half_height, rounding_radius),
-                _ => unreachable!(),
-            };
+            let default = Cylinder::default();
             util::grid(ui, |ui| {
-                util::render_transform(
+                events.extend(util::render_transform_with_events(ui, node));
+
+                let new_cylinder_radius = util::dragger_row(
                     ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
+                    "Cylinder radius",
+                    *cylinder_radius,
+                    default.cylinder_radius,
+                );
+                let new_half_height =
+                    util::dragger_row(ui, "Half height", *half_height, default.half_height);
+                let new_rounding_radius = util::dragger_row(
+                    ui,
+                    "Rounding radius",
+                    *rounding_radius,
+                    default.rounding_radius,
                 );
 
-                ui.label("Cylinder radius");
-                util::dragger(ui, cylinder_radius, default.0);
-                ui.end_row();
-
-                ui.label("Half height");
-                util::dragger(ui, half_height, default.1);
-                ui.end_row();
-
-                ui.label("Rounding radius");
-                util::dragger(ui, rounding_radius, default.2);
-                ui.end_row();
+                match (new_cylinder_radius, new_half_height, new_rounding_radius) {
+                    (None, None, None) => {}
+                    (cy, ha, rr) => events.push(GraphEvent::ReplaceData(
+                        node_id,
+                        NodeData::Cylinder(Cylinder {
+                            cylinder_radius: cy.unwrap_or(*cylinder_radius),
+                            half_height: ha.unwrap_or(*half_height),
+                            rounding_radius: rr.unwrap_or(*rounding_radius),
+                        }),
+                    )),
+                }
             });
         }
         NodeData::Torus(Torus { big_r, small_r }) => {
-            let default = match default_for_this_node.clone() {
-                NodeData::Torus(Torus { big_r, small_r }) => (big_r, small_r),
-                _ => unreachable!(),
-            };
+            let default = Torus::default();
             util::grid(ui, |ui| {
-                util::render_transform(
-                    ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
-                );
+                events.extend(util::render_transform_with_events(ui, node));
 
-                ui.label("Big radius");
-                util::dragger(ui, big_r, default.0);
-                ui.end_row();
+                let new_big_r = util::dragger_row(ui, "Big radius", *big_r, default.big_r);
+                let new_small_r = util::dragger_row(ui, "Small radius", *small_r, default.small_r);
 
-                ui.label("Small radius");
-                util::dragger(ui, small_r, default.1);
-                ui.end_row();
+                match (new_big_r, new_small_r) {
+                    (None, None) => {}
+                    (br, sr) => events.push(GraphEvent::ReplaceData(
+                        node_id,
+                        NodeData::Torus(Torus {
+                            big_r: br.unwrap_or(*big_r),
+                            small_r: sr.unwrap_or(*small_r),
+                        }),
+                    )),
+                }
             });
         }
 
         NodeData::Union(Union { factor, children }) => {
-            let default = match default_for_this_node {
-                NodeData::Union(Union { factor, .. }) => *factor,
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                util::render_transform(
-                    ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
-                );
-                util::factor_slider(ui, factor, default);
-            });
-
-            let mut to_remove = vec![];
-            for (index, child) in children.iter_mut().enumerate() {
-                if render_egui_tree(ui, child, index, depth + 1) {
-                    to_remove.push(index);
-                }
-            }
-            to_remove.sort_unstable();
-            to_remove.reverse();
-            for r in to_remove {
-                children.remove(r);
+            let default = Union::default();
+            let new_factor = util::factor_grid(ui, &mut events, node, *factor, default.factor);
+            if let Some(factor) = new_factor {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Union(Union {
+                        factor,
+                        children: children.clone(),
+                    }),
+                ))
             }
 
-            if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
-                children.push(new);
-            }
+            events.extend(util::render_removable_trees(
+                ui, graph, node_id, children, depth,
+            ));
         }
         NodeData::Intersect(Intersect {
             factor,
             children: (lhs, rhs),
         }) => {
-            let default = match default_for_this_node {
-                NodeData::Intersect(Intersect { factor, .. }) => *factor,
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                util::render_transform(
-                    ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
-                );
-                util::factor_slider(ui, factor, default);
-            });
-            util::render_removable_tree(ui, lhs, 0, depth);
-            util::render_removable_tree(ui, rhs, 1, depth);
+            let default = Intersect::default();
+            let new_factor = util::factor_grid(ui, &mut events, node, *factor, default.factor);
+            if let Some(factor) = new_factor {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Intersect(Intersect {
+                        factor,
+                        children: (*lhs, *rhs),
+                    }),
+                ))
+            }
+
+            events.extend(util::render_removable_tree_opt(
+                ui, graph, node_id, *lhs, 0, depth,
+            ));
+            events.extend(util::render_removable_tree_opt(
+                ui, graph, node_id, *rhs, 1, depth,
+            ));
         }
         NodeData::Subtract(Subtract { factor, children }) => {
-            let default = match default_for_this_node {
-                NodeData::Subtract(Subtract { factor, .. }) => *factor,
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                util::render_transform(
-                    ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
-                );
-                util::factor_slider(ui, factor, default);
-            });
-
-            let mut to_remove = vec![];
-            for (index, child) in children.iter_mut().enumerate() {
-                if render_egui_tree(ui, child, index, depth + 1) {
-                    to_remove.push(index);
-                }
-            }
-            to_remove.sort_unstable();
-            to_remove.reverse();
-            for r in to_remove {
-                children.remove(r);
+            let default = Subtract::default();
+            let new_factor = util::factor_grid(ui, &mut events, node, *factor, default.factor);
+            if let Some(factor) = new_factor {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Subtract(Subtract {
+                        factor,
+                        children: children.clone(),
+                    }),
+                ))
             }
 
-            if let Some(new) = util::render_add_button(ui, util::depth_to_color(depth + 1)) {
-                children.push(new);
-            }
+            events.extend(util::render_removable_trees(
+                ui, graph, node_id, children, depth,
+            ));
         }
 
-        NodeData::Rgb(Rgb { r, g, b, child }) => {
-            let default = match default_for_this_node {
-                NodeData::Rgb(Rgb { r, g, b, child: _ }) => (*r, *g, *b),
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                util::render_transform(
-                    ui,
-                    &mut node.translation,
-                    &mut node.rotation,
-                    &mut node.scale,
-                );
-
-                ui.label("Colour");
-                util::colour(ui, (r, g, b), default);
-                ui.end_row();
+        NodeData::Rgb(Rgb { rgb, child }) => {
+            let colour = util::grid(ui, |ui| {
+                events.extend(util::render_transform_with_events(ui, node));
+                util::with_label(ui, "Colour", |ui| {
+                    util::colour(ui, *rgb, Rgb::default().rgb)
+                })
             });
-            util::render_removable_tree(ui, child, 0, depth);
+            if let Some(rgb) = colour {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Rgb(Rgb { rgb, child: *child }),
+                ));
+            }
+
+            events.extend(util::render_removable_tree_opt(
+                ui, graph, node_id, *child, 0, depth,
+            ));
         }
 
         NodeData::Translate(Translate { position, child }) => {
-            let default = match default_for_this_node {
-                NodeData::Translate(Translate { position, child: _ }) => *position,
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                ui.label("Position");
-                util::vec3(ui, position, default);
-                ui.end_row();
+            let new_position = util::grid(ui, |ui| {
+                util::with_label(ui, "Position", |ui| {
+                    util::vec3(ui, *position, Translate::default().position)
+                })
             });
-            util::render_removable_tree(ui, child, 0, depth);
+            if let Some(position) = new_position {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Translate(Translate {
+                        position,
+                        child: *child,
+                    }),
+                ))
+            }
+
+            events.extend(util::render_removable_tree_opt(
+                ui, graph, node_id, *child, 0, depth,
+            ));
         }
         NodeData::Rotate(Rotate { rotation, child }) => {
-            let default = match default_for_this_node {
-                NodeData::Rotate(Rotate { rotation: rot, .. }) => *rot,
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                ui.label("Rotation (YPR)");
-                util::angle(ui, rotation, default);
-                ui.end_row();
+            let new_rotation = util::grid(ui, |ui| {
+                util::with_label(ui, "Rotation (YPR)", |ui| {
+                    util::angle(ui, *rotation, Rotate::default().rotation)
+                })
             });
-            util::render_removable_tree(ui, child, 0, depth);
+            if let Some(rotation) = new_rotation {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Rotate(Rotate {
+                        rotation,
+                        child: *child,
+                    }),
+                ))
+            }
+
+            events.extend(util::render_removable_tree_opt(
+                ui, graph, node_id, *child, 0, depth,
+            ));
         }
         NodeData::Scale(Scale { scale, child }) => {
-            let default = match default_for_this_node {
-                NodeData::Scale(Scale { scale, child: _ }) => *scale,
-                _ => unreachable!(),
-            };
-            util::grid(ui, |ui| {
-                ui.label("Scale");
-                util::dragger(ui, scale, default);
-                ui.end_row();
+            let new_scale = util::grid(ui, |ui| {
+                util::dragger_row(ui, "scale", *scale, Scale::default().scale)
             });
-            util::render_removable_tree(ui, child, 0, depth);
+            if let Some(scale) = new_scale {
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Scale(Scale {
+                        scale,
+                        child: *child,
+                    }),
+                ))
+            }
+
+            events.extend(util::render_removable_tree_opt(
+                ui, graph, node_id, *child, 0, depth,
+            ));
         }
     }
+
+    events
 }
 
-pub fn render_egui_tree(ui: &mut egui::Ui, node: &mut Node, index: usize, depth: usize) -> bool {
+pub fn render_egui_tree(
+    ui: &mut egui::Ui,
+    graph: &Graph,
+    parent_node_id: Option<NodeId>,
+    node_id: NodeId,
+    depth: usize,
+) -> (Vec<GraphEvent>, bool) {
     let color = util::depth_to_color(depth);
+    let name = graph.get(node_id).unwrap().data.name().to_owned();
 
     let mut remove = false;
-    ui.push_id(index, |ui| {
-        egui::Frame::none()
-            .stroke(egui::Stroke::new(1.0, color))
-            .inner_margin(egui::style::Margin::same(2.0))
-            .show(ui, |ui: &mut egui::Ui| {
-                let name = node.data.name();
-                let id = ui.make_persistent_id(name);
-                egui::collapsing_header::CollapsingState::load_with_default_open(
-                    ui.ctx(),
-                    id,
-                    true,
-                )
-                .show_header(ui, |ui| render_header(ui, node, color, &mut remove))
-                .body(|ui| render_body(ui, node, depth, color));
-            });
-    });
+    let events = ui
+        .push_id(node_id, |ui| {
+            egui::Frame::none()
+                .stroke(egui::Stroke::new(1.0, color))
+                .inner_margin(egui::style::Margin::same(2.0))
+                .show(ui, |ui: &mut egui::Ui| {
+                    let id = ui.make_persistent_id(name);
+                    egui::collapsing_header::CollapsingState::load_with_default_open(
+                        ui.ctx(),
+                        id,
+                        true,
+                    )
+                    .show_header(ui, |ui| {
+                        render_header(ui, graph, node_id, color, &mut remove)
+                    })
+                    .body(|ui| render_body(ui, graph, parent_node_id, node_id, depth))
+                })
+        })
+        .inner
+        .inner
+        .2
+        .map(|r| r.inner)
+        .unwrap_or_default();
 
-    remove
+    (events, remove)
 }
 
 mod util {
+    use std::collections::HashSet;
+
     use super::render_egui_tree;
     use bevy::prelude::*;
     use bevy_egui::egui;
-    use shared::Node;
+    use shared::{Graph, GraphEvent, Node, NodeData, NodeId};
 
-    pub fn with_reset_button(ui: &mut egui::Ui, main: impl FnOnce(&mut egui::Ui)) -> bool {
-        let mut reset = false;
+    fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
+        egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
+            width: 2.0,
+            color: color.into(),
+        })
+    }
+
+    pub fn with_reset_button<T>(
+        ui: &mut egui::Ui,
+        mut value: T,
+        default_value: T,
+        main: impl FnOnce(&mut egui::Ui, &mut T) -> bool,
+    ) -> Option<T> {
         ui.horizontal(|ui| {
-            main(ui);
-            if ui
+            if main(ui, &mut value) {
+                Some(value)
+            } else if ui
                 .small_button(egui::RichText::new("⟳").color(egui::Color32::WHITE))
                 .clicked()
             {
-                reset = true;
+                Some(default_value)
+            } else {
+                None
             }
-        });
-        reset
+        })
+        .inner
     }
 
-    pub fn grid(ui: &mut egui::Ui, f: impl FnOnce(&mut egui::Ui)) {
+    pub fn grid<T>(ui: &mut egui::Ui, f: impl FnOnce(&mut egui::Ui) -> T) -> T {
         egui::Grid::new("rows")
             .num_columns(2)
             .spacing([40.0, 4.0])
             .striped(true)
-            .show(ui, f);
+            .show(ui, f)
+            .inner
     }
 
-    pub fn dragger_with_no_reset(ui: &mut egui::Ui, value: &mut f32) {
+    pub fn dragger_with_no_reset(ui: &mut egui::Ui, value: &mut f32) -> egui::Response {
         ui.add(
             egui::widgets::DragValue::new(value)
                 .fixed_decimals(2)
                 .speed(0.01),
-        );
+        )
     }
 
-    pub fn dragger(ui: &mut egui::Ui, value: &mut f32, default_value: f32) {
-        let reset = with_reset_button(ui, |ui| {
-            dragger_with_no_reset(ui, value);
-        });
-        if reset {
-            *value = default_value;
-        }
+    fn dragger(ui: &mut egui::Ui, value: f32, default_value: f32) -> Option<f32> {
+        with_reset_button(ui, value, default_value, |ui, value| {
+            dragger_with_no_reset(ui, value).changed()
+        })
     }
 
-    pub fn vec3(ui: &mut egui::Ui, value: &mut Vec3, default_value: Vec3) {
-        let reset = with_reset_button(ui, |ui| {
+    pub fn dragger_row(
+        ui: &mut egui::Ui,
+        label: &str,
+        value: f32,
+        default_value: f32,
+    ) -> Option<f32> {
+        with_label(ui, label, |ui| dragger(ui, value, default_value))
+    }
+
+    pub fn vec3(ui: &mut egui::Ui, value: Vec3, default_value: Vec3) -> Option<Vec3> {
+        with_reset_button(ui, value, default_value, |ui, value| {
             ui.horizontal(|ui| {
-                dragger_with_no_reset(ui, &mut value.x);
-                dragger_with_no_reset(ui, &mut value.y);
-                dragger_with_no_reset(ui, &mut value.z);
-            });
-        });
-        if reset {
-            *value = default_value;
-        }
+                dragger_with_no_reset(ui, &mut value.x).changed()
+                    || dragger_with_no_reset(ui, &mut value.y).changed()
+                    || dragger_with_no_reset(ui, &mut value.z).changed()
+            })
+            .inner
+        })
     }
 
-    pub fn factor_slider(ui: &mut egui::Ui, value: &mut f32, default_value: f32) {
-        let reset = with_reset_button(ui, |ui| {
+    pub fn factor_slider(ui: &mut egui::Ui, value: f32, default_value: f32) -> Option<f32> {
+        with_reset_button(ui, value, default_value, |ui, value| {
             ui.label("Factor");
-            ui.add(egui::widgets::Slider::new(value, 0.0..=1.0));
+            let response = ui.add(egui::widgets::Slider::new(value, 0.0..=1.0));
             ui.end_row();
-        });
-        if reset {
-            *value = default_value;
-        }
+            response.changed()
+        })
     }
 
-    pub fn angle(ui: &mut egui::Ui, value: &mut Quat, default_value: Quat) {
-        let (mut yaw, mut pitch, mut roll) = value.to_euler(glam::EulerRot::YXZ);
-        let reset = with_reset_button(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.drag_angle(&mut yaw);
-                ui.drag_angle(&mut pitch);
-                ui.drag_angle(&mut roll);
+    pub fn factor_grid(
+        ui: &mut egui::Ui,
+        events: &mut Vec<GraphEvent>,
+        node: &Node,
+        value: f32,
+        default_value: f32,
+    ) -> Option<f32> {
+        grid(ui, |ui| {
+            events.extend(render_transform_with_events(ui, node));
+            factor_slider(ui, value, default_value)
+        })
+    }
+
+    pub fn angle(ui: &mut egui::Ui, value: Quat, default_value: Quat) -> Option<Quat> {
+        with_reset_button(ui, value, default_value, |ui, value| {
+            let (mut yaw, mut pitch, mut roll) = value.to_euler(glam::EulerRot::YXZ);
+            let response = ui.horizontal(|ui| {
+                ui.drag_angle(&mut yaw).changed()
+                    || ui.drag_angle(&mut pitch).changed()
+                    || ui.drag_angle(&mut roll).changed()
             });
             *value = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, roll);
-        });
-        if reset {
-            *value = default_value;
-        }
+            response.inner
+        })
     }
 
     pub fn colour(
         ui: &mut egui::Ui,
-        colour: (&mut f32, &mut f32, &mut f32),
+        value: (f32, f32, f32),
         default_value: (f32, f32, f32),
-    ) {
-        let (r, g, b) = colour;
-        let reset = with_reset_button(ui, |ui| {
-            let mut rgb = [*r, *g, *b];
-            egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
-            [*r, *g, *b] = rgb;
-        });
-        if reset {
-            (*r, *g, *b) = default_value;
-        }
+    ) -> Option<(f32, f32, f32)> {
+        with_reset_button(ui, value, default_value, |ui, value| {
+            let mut rgb = [value.0, value.1, value.2];
+            let response = egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
+            [value.0, value.1, value.2] = rgb;
+
+            response.changed()
+        })
+    }
+
+    pub fn with_label<T>(ui: &mut egui::Ui, label: &str, f: impl Fn(&mut egui::Ui) -> T) -> T {
+        ui.label(label);
+        let result = f(ui);
+        ui.end_row();
+        result
     }
 
     pub fn render_transform(
         ui: &mut egui::Ui,
-        translation: &mut Vec3,
-        rotation: &mut Quat,
-        scale: &mut f32,
-    ) {
-        ui.label("Translation");
-        vec3(ui, translation, Vec3::ZERO);
-        ui.end_row();
-
-        ui.label("Rotation");
-        angle(ui, rotation, Quat::IDENTITY);
-        ui.end_row();
-
-        ui.label("Scale");
-        dragger(ui, scale, 1.0);
-        ui.end_row();
+        translation: Vec3,
+        rotation: Quat,
+        scale: f32,
+    ) -> (Option<Vec3>, Option<Quat>, Option<f32>) {
+        (
+            with_label(ui, "Translation", |ui| vec3(ui, translation, Vec3::ZERO)),
+            with_label(ui, "Rotation", |ui| angle(ui, rotation, Quat::IDENTITY)),
+            with_label(ui, "Scale", |ui| dragger(ui, scale, 1.0)),
+        )
     }
 
-    pub fn render_removable_tree(
+    pub fn render_transform_with_events(
         ui: &mut egui::Ui,
-        node: &mut Option<Box<Node>>,
-        index: usize,
-        depth: usize,
-    ) {
-        match node {
-            Some(inside_node) => {
-                if render_egui_tree(ui, inside_node, index, depth + 1) {
-                    *node = None;
-                }
-            }
-            None => {
-                ui.push_id(index, |ui| {
-                    if let Some(new_node) = render_add_button(ui, depth_to_color(depth + 1)) {
-                        *node = Some(Box::new(new_node));
-                    }
-                });
-            }
-        }
+        node: &Node,
+    ) -> impl Iterator<Item = GraphEvent> {
+        let (translation, rotation, scale) =
+            render_transform(ui, node.translation, node.rotation, node.scale);
+        let translation = translation.map(|t| GraphEvent::SetTranslation(node.id, t));
+        let rotation = rotation.map(|r| GraphEvent::SetRotation(node.id, r));
+        let scale = scale.map(|s| GraphEvent::SetScale(node.id, s));
+
+        translation
+            .into_iter()
+            .chain(rotation.into_iter())
+            .chain(scale.into_iter())
     }
 
     pub fn render_add_dropdown(
         ui: &mut egui::Ui,
         response: egui::Response,
         include_primitives: bool,
-    ) -> Option<Node> {
+    ) -> Option<NodeData> {
         ui.push_id(response.id, |ui| {
             let popup_id = ui.make_persistent_id("add_menu");
             if response.clicked() {
@@ -520,32 +531,92 @@ mod util {
                     }
                 }
             });
-            new_node_data.map(Node::default_with_data)
+            new_node_data
         })
         .inner
     }
 
-    fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
-        egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
-            width: 2.0,
-            color: color.into(),
-        })
-    }
-
-    pub fn render_add_button(ui: &mut egui::Ui, color: egui::color::Hsva) -> Option<Node> {
+    pub fn render_add_button(
+        ui: &mut egui::Ui,
+        label: &str,
+        include_primitives: bool,
+        color: egui::color::Hsva,
+    ) -> Option<NodeData> {
         let response = ui.add_sized(
             egui::Vec2::new(ui.available_width(), ui.spacing().interact_size.y),
-            coloured_button("Add", color),
+            coloured_button(label, color),
         );
-        render_add_dropdown(ui, response, true)
+        render_add_dropdown(ui, response, include_primitives)
     }
 
-    pub fn render_add_parent_button(ui: &mut egui::Ui, color: egui::color::Hsva) -> Option<Node> {
-        let response = ui.add_sized(
-            egui::Vec2::new(ui.available_width(), ui.spacing().interact_size.y),
-            coloured_button("Add Parent", color),
+    pub fn render_removable_trees(
+        ui: &mut egui::Ui,
+        graph: &Graph,
+        parent_id: NodeId,
+        children: &[NodeId],
+        depth: usize,
+    ) -> impl Iterator<Item = GraphEvent> {
+        let depth = depth + 1;
+        let mut events = vec![];
+
+        let mut to_remove = HashSet::new();
+        for child_id in children {
+            let (mut child_events, remove) =
+                render_egui_tree(ui, graph, Some(parent_id), *child_id, depth);
+            events.append(&mut child_events);
+
+            if remove {
+                to_remove.insert(*child_id);
+            }
+        }
+        events.extend(
+            to_remove
+                .into_iter()
+                .map(move |child_id| GraphEvent::RemoveChild(parent_id, child_id)),
         );
-        render_add_dropdown(ui, response, false)
+
+        let new_child = render_add_button(ui, "Add", true, depth_to_color(depth));
+        if let Some(node_data) = new_child {
+            events.push(GraphEvent::AddChild(parent_id, None, node_data));
+        }
+
+        events.into_iter()
+    }
+
+    pub fn render_removable_tree_opt(
+        ui: &mut egui::Ui,
+        graph: &Graph,
+        parent_id: NodeId,
+        child_id_opt: Option<NodeId>,
+        child_index: usize,
+        depth: usize,
+    ) -> impl Iterator<Item = GraphEvent> {
+        let depth = depth + 1;
+        let mut events = vec![];
+
+        match child_id_opt {
+            Some(child_id) => {
+                let (mut child_events, remove) =
+                    render_egui_tree(ui, graph, Some(parent_id), child_id, depth);
+                events.append(&mut child_events);
+
+                if remove {
+                    events.push(GraphEvent::RemoveChild(parent_id, child_id));
+                }
+            }
+            None => {
+                let new_child = render_add_button(ui, "Add", true, depth_to_color(depth));
+                if let Some(node_data) = new_child {
+                    events.push(GraphEvent::AddChild(
+                        parent_id,
+                        Some(child_index),
+                        node_data,
+                    ));
+                }
+            }
+        };
+
+        events.into_iter()
     }
 
     pub fn depth_to_color(depth: usize) -> egui::color::Hsva {
