@@ -7,6 +7,15 @@ use shared::{
 };
 
 mod util;
+
+pub struct UiPlugin;
+impl Plugin for UiPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_system(sdf_code_editor);
+    }
+}
+
+fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
     mut graph: ResMut<Graph>,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,

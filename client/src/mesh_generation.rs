@@ -1,7 +1,22 @@
-use super::{CurrentEntity, RebuildTimer};
 use bevy::prelude::*;
 
-pub fn rebuild_mesh(
+struct CurrentEntity(Option<Entity>);
+struct RebuildTimer(Timer);
+
+pub struct MeshGenerationPlugin;
+impl Plugin for MeshGenerationPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(CurrentEntity(None))
+            .insert_resource(RebuildTimer(Timer::new(
+                std::time::Duration::from_secs_f32(0.2),
+                true,
+            )))
+            .add_startup_system(rebuild_mesh)
+            .add_system(keep_rebuilding_mesh);
+    }
+}
+
+fn rebuild_mesh(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -17,7 +32,7 @@ pub fn rebuild_mesh(
     );
 }
 
-pub fn keep_rebuilding_mesh(
+fn keep_rebuilding_mesh(
     commands: Commands,
     meshes: ResMut<Assets<Mesh>>,
     materials: ResMut<Assets<StandardMaterial>>,

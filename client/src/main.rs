@@ -15,9 +15,6 @@ pub struct OccupiedScreenSpace {
     _bottom: f32,
 }
 
-pub struct CurrentEntity(Option<Entity>);
-pub struct RebuildTimer(Timer);
-
 pub fn main() {
     #[cfg(target_arch = "wasm32")]
     console_error_panic_hook::set_once();
@@ -26,11 +23,6 @@ pub fn main() {
     app.insert_resource(Msaa { samples: 4 })
         .insert_resource(bevy::winit::WinitSettings::desktop_app())
         .insert_resource(shared::Graph::new(NodeData::Union(shared::Union::new())))
-        .insert_resource(CurrentEntity(None))
-        .insert_resource(RebuildTimer(Timer::new(
-            std::time::Duration::from_secs_f32(0.2),
-            true,
-        )))
         .insert_resource(WindowDescriptor {
             width: 1600.,
             height: 900.,
@@ -43,10 +35,9 @@ pub fn main() {
     app.add_plugin(bevy_web_fullscreen::FullViewportPlugin);
 
     app.add_plugin(EguiPlugin)
+        .add_plugin(ui::UiPlugin)
+        .add_plugin(mesh_generation::MeshGenerationPlugin)
         .add_startup_system(setup)
-        .add_startup_system(mesh_generation::rebuild_mesh)
-        .add_system(ui::sdf_code_editor)
-        .add_system(mesh_generation::keep_rebuilding_mesh)
         .add_system(camera::pan_orbit_camera)
         .run();
 }
