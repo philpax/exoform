@@ -119,20 +119,6 @@ impl Graph {
                     self.find_all_reachable_nodes(*child_id, seen);
                 }
             }
-
-            NodeData::Rgb(Rgb { child, .. }) => {
-                self.find_all_reachable_nodes_opt(*child, seen);
-            }
-
-            NodeData::Translate(Translate { child, .. }) => {
-                self.find_all_reachable_nodes_opt(*child, seen);
-            }
-            NodeData::Rotate(Rotate { child, .. }) => {
-                self.find_all_reachable_nodes_opt(*child, seen);
-            }
-            NodeData::Scale(Scale { child, .. }) => {
-                self.find_all_reachable_nodes_opt(*child, seen);
-            }
         }
     }
 

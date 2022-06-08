@@ -3,8 +3,7 @@ use bevy_egui::{egui, EguiContext};
 
 use super::OccupiedScreenSpace;
 use shared::{
-    Cylinder, Graph, GraphEvent, Intersect, NodeData, NodeId, Rgb, Rotate, Scale, Sphere, Subtract,
-    Torus, Translate, Union,
+    Cylinder, Graph, GraphEvent, Intersect, NodeData, NodeId, Sphere, Subtract, Torus, Union,
 };
 
 pub fn sdf_code_editor(
@@ -210,84 +209,6 @@ fn render_body(
 
             events.extend(util::render_removable_trees(
                 ui, graph, node_id, children, depth,
-            ));
-        }
-
-        NodeData::Rgb(Rgb { rgb, child }) => {
-            let colour = util::grid(ui, |ui| {
-                events.extend(util::render_transform_with_events(ui, node));
-                util::with_label(ui, "Colour", |ui| {
-                    util::colour(ui, *rgb, Rgb::default().rgb)
-                })
-            });
-            if let Some(rgb) = colour {
-                events.push(GraphEvent::ReplaceData(
-                    node_id,
-                    NodeData::Rgb(Rgb { rgb, child: *child }),
-                ));
-            }
-
-            events.extend(util::render_removable_tree_opt(
-                ui, graph, node_id, *child, 0, depth,
-            ));
-        }
-
-        NodeData::Translate(Translate { position, child }) => {
-            let new_position = util::grid(ui, |ui| {
-                util::with_label(ui, "Position", |ui| {
-                    util::vec3(ui, *position, Translate::default().position)
-                })
-            });
-            if let Some(position) = new_position {
-                events.push(GraphEvent::ReplaceData(
-                    node_id,
-                    NodeData::Translate(Translate {
-                        position,
-                        child: *child,
-                    }),
-                ))
-            }
-
-            events.extend(util::render_removable_tree_opt(
-                ui, graph, node_id, *child, 0, depth,
-            ));
-        }
-        NodeData::Rotate(Rotate { rotation, child }) => {
-            let new_rotation = util::grid(ui, |ui| {
-                util::with_label(ui, "Rotation (YPR)", |ui| {
-                    util::angle(ui, *rotation, Rotate::default().rotation)
-                })
-            });
-            if let Some(rotation) = new_rotation {
-                events.push(GraphEvent::ReplaceData(
-                    node_id,
-                    NodeData::Rotate(Rotate {
-                        rotation,
-                        child: *child,
-                    }),
-                ))
-            }
-
-            events.extend(util::render_removable_tree_opt(
-                ui, graph, node_id, *child, 0, depth,
-            ));
-        }
-        NodeData::Scale(Scale { scale, child }) => {
-            let new_scale = util::grid(ui, |ui| {
-                util::dragger_row(ui, "scale", *scale, Scale::default().scale)
-            });
-            if let Some(scale) = new_scale {
-                events.push(GraphEvent::ReplaceData(
-                    node_id,
-                    NodeData::Scale(Scale {
-                        scale,
-                        child: *child,
-                    }),
-                ))
-            }
-
-            events.extend(util::render_removable_tree_opt(
-                ui, graph, node_id, *child, 0, depth,
             ));
         }
     }

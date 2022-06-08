@@ -1,4 +1,3 @@
-use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
 use crate::{NodeCategory, NodeId};
@@ -116,82 +115,6 @@ impl Default for Subtract {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Rgb {
-    pub rgb: (f32, f32, f32),
-    pub child: Option<NodeId>,
-}
-impl Rgb {
-    pub const fn new() -> Rgb {
-        Rgb {
-            rgb: (1.0, 1.0, 1.0),
-            child: None,
-        }
-    }
-}
-impl Default for Rgb {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Translate {
-    pub position: Vec3,
-    pub child: Option<NodeId>,
-}
-impl Translate {
-    pub const fn new() -> Translate {
-        Translate {
-            position: Vec3::ZERO,
-            child: None,
-        }
-    }
-}
-impl Default for Translate {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Rotate {
-    pub rotation: Quat,
-    pub child: Option<NodeId>,
-}
-impl Rotate {
-    pub const fn new() -> Rotate {
-        Rotate {
-            rotation: Quat::IDENTITY,
-            child: None,
-        }
-    }
-}
-impl Default for Rotate {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Scale {
-    pub scale: f32,
-    pub child: Option<NodeId>,
-}
-impl Scale {
-    pub const fn new() -> Scale {
-        Scale {
-            scale: 1.0,
-            child: None,
-        }
-    }
-}
-impl Default for Scale {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeData {
     Sphere(Sphere),
     Cylinder(Cylinder),
@@ -200,12 +123,6 @@ pub enum NodeData {
     Union(Union),
     Intersect(Intersect),
     Subtract(Subtract),
-
-    Rgb(Rgb),
-
-    Translate(Translate),
-    Rotate(Rotate),
-    Scale(Scale),
 }
 impl NodeData {
     pub const fn name(&self) -> &str {
@@ -217,12 +134,6 @@ impl NodeData {
             NodeData::Union(_) => "Union",
             NodeData::Intersect(_) => "Intersect",
             NodeData::Subtract(_) => "Subtract",
-
-            NodeData::Rgb(_) => "Rgb",
-
-            NodeData::Translate(_) => "Translate",
-            NodeData::Rotate(_) => "Rotate",
-            NodeData::Scale(_) => "Scale",
         }
     }
 
@@ -235,12 +146,6 @@ impl NodeData {
             NodeData::Union(_) => NodeCategory::Operation,
             NodeData::Intersect(_) => NodeCategory::Operation,
             NodeData::Subtract(_) => NodeCategory::Operation,
-
-            NodeData::Rgb(_) => NodeCategory::Metadata,
-
-            NodeData::Translate(_) => NodeCategory::Transform,
-            NodeData::Rotate(_) => NodeCategory::Transform,
-            NodeData::Scale(_) => NodeCategory::Transform,
         }
     }
 
@@ -271,10 +176,6 @@ impl NodeData {
             }
         }
 
-        fn add_to_one(child: &mut Option<NodeId>, child_id: NodeId) {
-            *child = Some(child_id)
-        }
-
         match self {
             NodeData::Sphere(_) => panic!("this node does not support children"),
             NodeData::Cylinder(_) => panic!("this node does not support children"),
@@ -285,12 +186,6 @@ impl NodeData {
                 add_to_lhs_rhs(children, index, child_id)
             }
             NodeData::Subtract(Subtract { children, .. }) => add_to_vec(children, index, child_id),
-
-            NodeData::Rgb(Rgb { child, .. }) => add_to_one(child, child_id),
-
-            NodeData::Translate(Translate { child, .. }) => add_to_one(child, child_id),
-            NodeData::Rotate(Rotate { child, .. }) => add_to_one(child, child_id),
-            NodeData::Scale(Scale { child, .. }) => add_to_one(child, child_id),
         }
     }
 
@@ -309,10 +204,6 @@ impl NodeData {
             }
         }
 
-        fn remove_from_one(child: &mut Option<NodeId>) {
-            *child = None
-        }
-
         match self {
             NodeData::Sphere(_) => panic!("this node does not support children"),
             NodeData::Cylinder(_) => panic!("this node does not support children"),
@@ -323,12 +214,6 @@ impl NodeData {
                 remove_from_lhs_rhs(children, child_id)
             }
             NodeData::Subtract(Subtract { children, .. }) => remove_from_vec(children, child_id),
-
-            NodeData::Rgb(Rgb { child, .. }) => remove_from_one(child),
-
-            NodeData::Translate(Translate { child, .. }) => remove_from_one(child),
-            NodeData::Rotate(Rotate { child, .. }) => remove_from_one(child),
-            NodeData::Scale(Scale { child, .. }) => remove_from_one(child),
         }
     }
 
@@ -355,12 +240,6 @@ impl NodeData {
             }
         }
 
-        fn replace_in_one(child: &mut Option<NodeId>, old_child_id: NodeId, new_child_id: NodeId) {
-            if *child == Some(old_child_id) {
-                *child = Some(new_child_id);
-            }
-        }
-
         match self {
             NodeData::Sphere(_) => panic!("this node does not support children"),
             NodeData::Cylinder(_) => panic!("this node does not support children"),
@@ -374,18 +253,6 @@ impl NodeData {
             }
             NodeData::Subtract(Subtract { children, .. }) => {
                 replace_in_vec(children, old_child_id, new_child_id)
-            }
-
-            NodeData::Rgb(Rgb { child, .. }) => replace_in_one(child, old_child_id, new_child_id),
-
-            NodeData::Translate(Translate { child, .. }) => {
-                replace_in_one(child, old_child_id, new_child_id)
-            }
-            NodeData::Rotate(Rotate { child, .. }) => {
-                replace_in_one(child, old_child_id, new_child_id)
-            }
-            NodeData::Scale(Scale { child, .. }) => {
-                replace_in_one(child, old_child_id, new_child_id)
             }
         }
     }

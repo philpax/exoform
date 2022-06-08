@@ -56,8 +56,4 @@ pub const NODE_DEFAULTS: &[NodeData] = &[
     NodeData::Union(Union::new()),
     NodeData::Intersect(Intersect::new()),
     NodeData::Subtract(Subtract::new()),
-    NodeData::Rgb(Rgb::new()),
-    NodeData::Translate(Translate::new()),
-    NodeData::Rotate(Rotate::new()),
-    NodeData::Scale(Scale::new()),
 ];

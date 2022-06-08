@@ -123,30 +123,6 @@ fn node_to_saft_node_data(
                 Some(new_node_id)
             }
         }
-
-        NodeData::Rgb(Rgb { rgb, child: node }) => {
-            let child = node_to_saft_node(saft_graph, graph, (*node)?)?;
-            Some(saft_graph.op_rgb(child, [rgb.0, rgb.1, rgb.2]))
-        }
-
-        NodeData::Translate(Translate {
-            position,
-            child: node,
-        }) => {
-            let child = node_to_saft_node(saft_graph, graph, (*node)?)?;
-            Some(saft_graph_translate(saft_graph, child, position))
-        }
-        NodeData::Rotate(Rotate {
-            rotation,
-            child: node,
-        }) => {
-            let child = node_to_saft_node(saft_graph, graph, (*node)?)?;
-            Some(saft_graph_rotate(saft_graph, child, rotation))
-        }
-        NodeData::Scale(Scale { scale, child: node }) => {
-            let child = node_to_saft_node(saft_graph, graph, (*node)?)?;
-            Some(saft_graph.op_scale(child, *scale))
-        }
     }
 }
 
