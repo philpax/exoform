@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::render_egui_tree;
+use super::{render_egui_tree, SelectedNode};
 use bevy::prelude::*;
 use bevy_egui::egui;
 use shared::{Graph, GraphEvent, Node, NodeData, NodeId};
@@ -214,22 +214,26 @@ pub fn render_add_dropdown(
     .inner
 }
 
-pub fn render_add_button(
+pub fn render_add_parent_button(ui: &mut egui::Ui, color: egui::color::Hsva) -> Option<NodeData> {
+    let response = ui.add(coloured_button("⬆", color));
+    render_add_dropdown(ui, response, false)
+}
+
+pub fn render_add_button_max_width(
     ui: &mut egui::Ui,
-    label: &str,
-    include_primitives: bool,
     color: egui::color::Hsva,
 ) -> Option<NodeData> {
     let response = ui.add_sized(
         egui::Vec2::new(ui.available_width(), ui.spacing().interact_size.y),
-        coloured_button(label, color),
+        coloured_button("+", color),
     );
-    render_add_dropdown(ui, response, include_primitives)
+    render_add_dropdown(ui, response, true)
 }
 
 pub fn render_removable_trees(
     ui: &mut egui::Ui,
     graph: &Graph,
+    selected_node: &mut SelectedNode,
     parent_id: NodeId,
     children: &[NodeId],
     depth: usize,
@@ -240,7 +244,7 @@ pub fn render_removable_trees(
     let mut to_remove = HashSet::new();
     for child_id in children {
         let (mut child_events, remove) =
-            render_egui_tree(ui, graph, Some(parent_id), *child_id, depth);
+            render_egui_tree(ui, graph, selected_node, Some(parent_id), *child_id, depth);
         events.append(&mut child_events);
 
         if remove {
@@ -253,7 +257,7 @@ pub fn render_removable_trees(
             .map(move |child_id| GraphEvent::RemoveChild(parent_id, child_id)),
     );
 
-    let new_child = render_add_button(ui, "Add", true, depth_to_color(depth));
+    let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
     if let Some(node_data) = new_child {
         events.push(GraphEvent::AddChild(parent_id, None, node_data));
     }
@@ -264,6 +268,7 @@ pub fn render_removable_trees(
 pub fn render_removable_tree_opt(
     ui: &mut egui::Ui,
     graph: &Graph,
+    selected_node: &mut SelectedNode,
     parent_id: NodeId,
     child_id_opt: Option<NodeId>,
     child_index: usize,
@@ -275,7 +280,7 @@ pub fn render_removable_tree_opt(
     match child_id_opt {
         Some(child_id) => {
             let (mut child_events, remove) =
-                render_egui_tree(ui, graph, Some(parent_id), child_id, depth);
+                render_egui_tree(ui, graph, selected_node, Some(parent_id), child_id, depth);
             events.append(&mut child_events);
 
             if remove {
@@ -283,7 +288,7 @@ pub fn render_removable_tree_opt(
             }
         }
         None => {
-            let new_child = render_add_button(ui, "Add", true, depth_to_color(depth));
+            let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
             if let Some(node_data) = new_child {
                 events.push(GraphEvent::AddChild(
                     parent_id,
@@ -297,6 +302,7 @@ pub fn render_removable_tree_opt(
     events.into_iter()
 }
 
-pub fn depth_to_color(depth: usize) -> egui::color::Hsva {
-    egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, 0.6, 0.7, 1.0)
+pub fn depth_to_color(depth: usize, foreground: bool) -> egui::color::Hsva {
+    let (s, v) = if foreground { (0.6, 0.8) } else { (0.9, 0.4) };
+    egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, s, v, 1.0)
 }
