@@ -19,13 +19,13 @@ pub fn with_reset_button<T>(
     main: impl FnOnce(&mut egui::Ui, &mut T) -> bool,
 ) -> Option<T> {
     ui.horizontal(|ui| {
-        if main(ui, &mut value) {
-            Some(value)
-        } else if ui
+        if ui
             .small_button(egui::RichText::new("⟳").color(egui::Color32::WHITE))
             .clicked()
         {
             Some(default_value)
+        } else if main(ui, &mut value) {
+            Some(value)
         } else {
             None
         }
