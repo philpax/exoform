@@ -3896,7 +3896,6 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bevy_math 0.7.0",
  "glam",
  "serde",
  "serde_json",

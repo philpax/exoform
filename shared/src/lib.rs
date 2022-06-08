@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use bevy_math::prelude::*;
 use serde::{Deserialize, Serialize};
+use glam::{Vec3, Quat};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId(u32);
