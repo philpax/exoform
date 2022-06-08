@@ -26,6 +26,7 @@ pub fn main() {
         .insert_resource(WindowDescriptor {
             width: 1600.,
             height: 900.,
+            title: format!("Exoform {}", env!("CARGO_PKG_VERSION")),
             ..Default::default()
         })
         .init_resource::<OccupiedScreenSpace>()
