@@ -1,11 +1,15 @@
-use clap::Parser;
-use lunatic::{net, process::StartProcess};
-
+#[cfg(target_family = "wasm")]
 mod file_store;
+
+#[cfg(target_family = "wasm")]
 mod http;
 
+#[cfg(target_family = "wasm")]
 #[lunatic::main]
 fn main(_: lunatic::Mailbox<()>) {
+    use clap::Parser;
+    use lunatic::{net, process::StartProcess};
+
     #[derive(Parser)]
     #[clap(author, version, about, long_about = None)]
     struct Args {
@@ -23,3 +27,6 @@ fn main(_: lunatic::Mailbox<()>) {
         http::ClientProcess::start((stream, file_store.clone()), None);
     }
 }
+
+#[cfg(not(target_family = "wasm"))]
+fn main() {}
