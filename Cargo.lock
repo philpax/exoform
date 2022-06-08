@@ -1978,7 +1978,6 @@ dependencies = [
  "console_log",
  "glam",
  "js-sys",
- "saft",
  "shared",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3897,6 +3896,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "glam",
+ "saft",
  "serde",
  "serde_json",
 ]

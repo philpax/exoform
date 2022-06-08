@@ -12,7 +12,6 @@ bevy = "0.8.0-dev"
 bevy_egui = {git = "https://github.com/exjam/bevy_egui.git", branch = "fix_bevy_main"}
 bimap = "0.6.2"
 glam = "0.20.5"
-saft = "0.30.0"
 shared = {path = "../shared"}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
