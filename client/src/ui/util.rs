@@ -72,11 +72,11 @@ pub fn vec3(ui: &mut egui::Ui, value: Vec3, default_value: Vec3) -> Option<Vec3>
 }
 
 pub fn factor_slider(ui: &mut egui::Ui, value: f32, default_value: f32) -> Option<f32> {
-    with_reset_button(ui, value, default_value, |ui, value| {
-        ui.label("Factor");
-        let response = ui.add(egui::widgets::Slider::new(value, 0.0..=1.0));
-        ui.end_row();
-        response.changed()
+    with_label(ui, "Factor", |ui| {
+        with_reset_button(ui, value, default_value, |ui, value| {
+            ui.add(egui::widgets::Slider::new(value, 0.0..=1.0))
+                .changed()
+        })
     })
 }
 
