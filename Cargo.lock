@@ -1966,6 +1966,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77f3309417938f28bf8228fcff79a4a37103981e3e186d2ccd19c74b38f4eb71"
 
 [[package]]
+name = "exoform-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bevy 0.8.0-dev",
+ "bevy_egui",
+ "bevy_web_fullscreen",
+ "bimap",
+ "console_error_panic_hook",
+ "console_log",
+ "glam",
+ "js-sys",
+ "saft",
+ "shared",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "exoform-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "flate2",
+ "http_tiny",
+ "itertools",
+ "lunatic",
+ "malvolio",
+ "new_mime_guess",
+ "numtoa",
+ "serde",
+ "serde_bytes",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3804,43 +3841,6 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
-
-[[package]]
-name = "sdfbox-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bevy 0.8.0-dev",
- "bevy_egui",
- "bevy_web_fullscreen",
- "bimap",
- "console_error_panic_hook",
- "console_log",
- "glam",
- "js-sys",
- "saft",
- "shared",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "sdfbox-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "flate2",
- "http_tiny",
- "itertools",
- "lunatic",
- "malvolio",
- "new_mime_guess",
- "numtoa",
- "serde",
- "serde_bytes",
-]
 
 [[package]]
 name = "serde"

@@ -2,7 +2,7 @@
 authors = ["Philpax <me@philpax.me>"]
 edition = "2021"
 license = "MIT"
-name = "sdfbox-client"
+name = "exoform-client"
 resolver = "2"
 version = "0.1.0"
 
