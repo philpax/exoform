@@ -68,7 +68,10 @@ pub(crate) fn pan_orbit_camera(
         orbit_button_changed = true;
     }
 
-    let window = get_primary_window_size(&windows);
+    let window = match get_primary_window_size(&windows) {
+        Some(s) => s,
+        None => return,
+    };
     for (mut pan_orbit, mut transform, projection, _) in query.iter_mut() {
         if orbit_button_changed {
             // only check for upside down when orbiting started or ended this frame
@@ -144,7 +147,7 @@ pub(crate) fn pan_orbit_camera(
     }
 }
 
-pub(crate) fn get_primary_window_size(windows: &Res<Windows>) -> Vec2 {
-    let window = windows.get_primary().unwrap();
-    Vec2::new(window.width() as f32, window.height() as f32)
+pub(crate) fn get_primary_window_size(windows: &Res<Windows>) -> Option<Vec2> {
+    let window = windows.get_primary()?;
+    Some(Vec2::new(window.width() as f32, window.height() as f32))
 }

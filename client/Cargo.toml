@@ -9,7 +9,7 @@ version = "0.1.0"
 [dependencies]
 anyhow = "1.0.57"
 bevy = "0.8.0-dev"
-bevy_egui = {git = "https://github.com/exjam/bevy_egui.git", branch = "fix_bevy_main"}
+bevy_egui = {path = "../crates/bevy_egui"}
 bimap = "0.6.2"
 glam = "0.20.5"
 shared = {path = "../shared"}
