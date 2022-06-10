@@ -302,7 +302,7 @@ pub fn render_removable_tree_opt(
     events.into_iter()
 }
 
-pub fn depth_to_color(depth: usize, foreground: bool) -> egui::color::Hsva {
-    let (s, v) = if foreground { (0.6, 0.8) } else { (0.9, 0.4) };
+pub fn depth_to_color(depth: usize, is_selected: bool) -> egui::color::Hsva {
+    let (s, v) = if is_selected { (0.9, 0.4) } else { (0.9, 0.2) };
     egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, s, v, 1.0)
 }

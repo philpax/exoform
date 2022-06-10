@@ -126,8 +126,6 @@ fn render_header(
     let is_selected = selected_node.0 == Some(node_id);
     let name = graph.get(node_id).unwrap().data.name();
 
-    let color = util::depth_to_color(depth, !is_selected);
-
     if ui
         .add(util::coloured_button("❌", egui::Color32::LIGHT_RED.into()))
         .clicked()
@@ -144,20 +142,20 @@ fn render_header(
     }
 
     let interact_size = ui.spacing().interact_size;
-    let mut node_text = egui::RichText::new(name)
-        .color(color)
-        .family(egui::FontFamily::Monospace);
-    if is_selected {
-        node_text = node_text.color(egui::Color32::WHITE);
-    }
-    let mut node_button = egui::widgets::Button::new(node_text);
-    if is_selected {
-        node_button = node_button.fill(color);
-    }
+    let (bg_colour, fg_colour) = (
+        util::depth_to_color(depth, is_selected),
+        egui::Color32::WHITE,
+    );
     if ui
         .add_sized(
             egui::Vec2::new(ui.available_width(), interact_size.y),
-            node_button,
+            egui::Button::new(
+                egui::RichText::new(name)
+                    .color(fg_colour)
+                    .family(egui::FontFamily::Monospace),
+            )
+            .fill(bg_colour)
+            .sense(egui::Sense::click()),
         )
         .clicked()
     {
