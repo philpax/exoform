@@ -101,6 +101,13 @@ impl Graph {
             NodeData::Sphere(_) => {}
             NodeData::Cylinder(_) => {}
             NodeData::Torus(_) => {}
+            NodeData::Plane(_) => {}
+            NodeData::Capsule(_) => {}
+            NodeData::TaperedCapsule(_) => {}
+            NodeData::Cone(_) => {}
+            NodeData::Box(_) => {}
+            NodeData::TorusSector(_) => {}
+            NodeData::BiconvexLens(_) => {}
 
             NodeData::Union(Union { children, .. }) => {
                 for child_id in children {

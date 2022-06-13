@@ -65,12 +65,3 @@ impl ToString for Node {
         String::from_utf8(buf).unwrap()
     }
 }
-
-pub const NODE_DEFAULTS: &[NodeData] = &[
-    NodeData::Sphere(Sphere::new()),
-    NodeData::Cylinder(Cylinder::new()),
-    NodeData::Torus(Torus::new()),
-    NodeData::Union(Union::new()),
-    NodeData::Intersect(Intersect::new()),
-    NodeData::Subtract(Subtract::new()),
-];

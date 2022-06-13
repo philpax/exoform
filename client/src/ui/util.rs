@@ -187,7 +187,7 @@ pub fn render_add_dropdown(
         let mut new_node_data = None;
         egui::popup_below_widget(ui, popup_id, &response, |ui| {
             ui.set_min_width(200.0);
-            for default in shared::NODE_DEFAULTS.iter() {
+            for default in shared::NODE_DATA_DEFAULTS.iter() {
                 let category_color = match default.category() {
                     shared::NodeCategory::Primitive => {
                         if !include_primitives {

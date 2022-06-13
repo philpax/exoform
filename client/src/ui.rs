@@ -3,7 +3,8 @@ use bevy_egui::{egui, EguiContext};
 
 use super::OccupiedScreenSpace;
 use shared::{
-    Cylinder, Graph, GraphEvent, Intersect, NodeData, NodeId, Sphere, Subtract, Torus, Union,
+    BiconvexLens, Box, Capsule, Cone, Cylinder, Graph, GraphEvent, Intersect, NodeData, NodeId,
+    Plane, Sphere, Subtract, TaperedCapsule, Torus, TorusSector, Union,
 };
 
 mod util;
@@ -182,6 +183,13 @@ fn render_body(
         NodeData::Sphere(_) => {}
         NodeData::Cylinder(_) => {}
         NodeData::Torus(_) => {}
+        NodeData::Plane(_) => {}
+        NodeData::Capsule(_) => {}
+        NodeData::TaperedCapsule(_) => {}
+        NodeData::Cone(_) => {}
+        NodeData::Box(_) => {}
+        NodeData::TorusSector(_) => {}
+        NodeData::BiconvexLens(_) => {}
 
         NodeData::Union(Union { children, .. }) => {
             events.extend(util::render_removable_trees(
@@ -229,10 +237,20 @@ fn render_body(
 }
 
 fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Vec<GraphEvent> {
+    macro_rules! return_if_unchanged {
+        [$($value:ident),*] => {
+            if [$($value.is_none()),*].into_iter().all(|x| x) {
+                return;
+            }
+        }
+    }
+
     let mut events = vec![];
     let node = graph.get(node_id).unwrap();
 
     ui.label(egui::RichText::new(node.data.name()).heading());
+
+    use util::dragger_row as row;
 
     match &node.data {
         NodeData::Sphere(Sphere { radius }) => {
@@ -240,7 +258,8 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
             util::grid(ui, |ui| {
                 events.extend(util::render_node_prelude_with_events(ui, node));
 
-                if let Some(radius) = util::dragger_row(ui, "Radius", *radius, default.radius) {
+                let new_radius = row(ui, "Radius", *radius, default.radius);
+                if let Some(radius) = new_radius {
                     events.push(GraphEvent::ReplaceData(
                         node_id,
                         NodeData::Sphere(Sphere { radius }),
@@ -257,32 +276,30 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
             util::grid(ui, |ui| {
                 events.extend(util::render_node_prelude_with_events(ui, node));
 
-                let new_cylinder_radius = util::dragger_row(
+                let new_cylinder_radius = row(
                     ui,
                     "Cylinder radius",
                     *cylinder_radius,
                     default.cylinder_radius,
                 );
-                let new_half_height =
-                    util::dragger_row(ui, "Half height", *half_height, default.half_height);
-                let new_rounding_radius = util::dragger_row(
+                let new_half_height = row(ui, "Half height", *half_height, default.half_height);
+                let new_rounding_radius = row(
                     ui,
                     "Rounding radius",
                     *rounding_radius,
                     default.rounding_radius,
                 );
 
-                match (new_cylinder_radius, new_half_height, new_rounding_radius) {
-                    (None, None, None) => {}
-                    (cy, ha, rr) => events.push(GraphEvent::ReplaceData(
-                        node_id,
-                        NodeData::Cylinder(Cylinder {
-                            cylinder_radius: cy.unwrap_or(*cylinder_radius),
-                            half_height: ha.unwrap_or(*half_height),
-                            rounding_radius: rr.unwrap_or(*rounding_radius),
-                        }),
-                    )),
-                }
+                return_if_unchanged![new_cylinder_radius, new_half_height, new_rounding_radius];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Cylinder(Cylinder {
+                        cylinder_radius: new_cylinder_radius.unwrap_or(*cylinder_radius),
+                        half_height: new_half_height.unwrap_or(*half_height),
+                        rounding_radius: new_rounding_radius.unwrap_or(*rounding_radius),
+                    }),
+                ));
             });
         }
         NodeData::Torus(Torus { big_r, small_r }) => {
@@ -290,19 +307,187 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
             util::grid(ui, |ui| {
                 events.extend(util::render_node_prelude_with_events(ui, node));
 
-                let new_big_r = util::dragger_row(ui, "Big radius", *big_r, default.big_r);
-                let new_small_r = util::dragger_row(ui, "Small radius", *small_r, default.small_r);
+                let new_big_r = row(ui, "Big radius", *big_r, default.big_r);
+                let new_small_r = row(ui, "Small radius", *small_r, default.small_r);
 
-                match (new_big_r, new_small_r) {
-                    (None, None) => {}
-                    (br, sr) => events.push(GraphEvent::ReplaceData(
-                        node_id,
-                        NodeData::Torus(Torus {
-                            big_r: br.unwrap_or(*big_r),
-                            small_r: sr.unwrap_or(*small_r),
-                        }),
-                    )),
-                }
+                return_if_unchanged![new_big_r, new_small_r];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Torus(Torus {
+                        big_r: new_big_r.unwrap_or(*big_r),
+                        small_r: new_small_r.unwrap_or(*small_r),
+                    }),
+                ));
+            });
+        }
+        NodeData::Plane(Plane { .. }) => {
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+            });
+        }
+        NodeData::Capsule(Capsule { points, radius }) => {
+            let default = Capsule::default();
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+
+                let new_points_0 = util::with_label(ui, "Point 1", |ui| {
+                    util::vec3(ui, points[0], default.points[0])
+                });
+                let new_points_1 = util::with_label(ui, "Point 2", |ui| {
+                    util::vec3(ui, points[1], default.points[1])
+                });
+                let new_radius = row(ui, "Radius", *radius, default.radius);
+
+                return_if_unchanged![new_points_0, new_points_1, new_radius];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Capsule(Capsule {
+                        points: [
+                            new_points_0.unwrap_or(default.points[0]),
+                            new_points_1.unwrap_or(default.points[1]),
+                        ],
+                        radius: new_radius.unwrap_or(*radius),
+                    }),
+                ));
+            });
+        }
+        NodeData::TaperedCapsule(TaperedCapsule { points, radii }) => {
+            let default = TaperedCapsule::default();
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+
+                let new_points_0 = util::with_label(ui, "Point 1", |ui| {
+                    util::vec3(ui, points[0], default.points[0])
+                });
+                let new_points_1 = util::with_label(ui, "Point 2", |ui| {
+                    util::vec3(ui, points[1], default.points[1])
+                });
+                let new_radius_0 = row(ui, "Radius 1", radii[0], default.radii[0]);
+                let new_radius_1 = row(ui, "Radius 2", radii[1], default.radii[1]);
+
+                return_if_unchanged![new_points_0, new_points_1, new_radius_0, new_radius_1];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::TaperedCapsule(TaperedCapsule {
+                        points: [
+                            new_points_0.unwrap_or(default.points[0]),
+                            new_points_1.unwrap_or(default.points[1]),
+                        ],
+                        radii: [
+                            new_radius_0.unwrap_or(default.radii[0]),
+                            new_radius_1.unwrap_or(default.radii[1]),
+                        ],
+                    }),
+                ));
+            });
+        }
+        NodeData::Cone(Cone { radius, height }) => {
+            let default = Cone::default();
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+
+                let new_radius = row(ui, "Radius", *radius, default.radius);
+                let new_height = row(ui, "Height", *height, default.height);
+
+                return_if_unchanged![new_radius, new_height];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Cone(Cone {
+                        radius: new_radius.unwrap_or(*radius),
+                        height: new_height.unwrap_or(*height),
+                    }),
+                ));
+            });
+        }
+        NodeData::Box(Box {
+            half_size,
+            rounding_radius,
+        }) => {
+            let default = Box::default();
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+
+                let new_half_size = util::with_label(ui, "Half size", |ui| {
+                    util::vec3(ui, *half_size, default.half_size)
+                });
+                let new_rounding_radius = row(
+                    ui,
+                    "Rounding radius",
+                    *rounding_radius,
+                    default.rounding_radius,
+                );
+
+                return_if_unchanged![new_half_size, new_rounding_radius];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::Box(Box {
+                        half_size: new_half_size.unwrap_or(*half_size),
+                        rounding_radius: new_rounding_radius.unwrap_or(*rounding_radius),
+                    }),
+                ));
+            });
+        }
+        NodeData::TorusSector(TorusSector {
+            big_r,
+            small_r,
+            angle,
+        }) => {
+            let default = TorusSector::default();
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+
+                let new_big_r = row(ui, "Big radius", *big_r, default.big_r);
+                let new_small_r = row(ui, "Small radius", *small_r, default.small_r);
+                let new_angle = util::with_label(ui, "Angle", |ui| {
+                    util::with_reset_button(ui, *angle, default.angle, |ui, value| {
+                        let changed = ui.drag_angle(value).changed();
+                        *value %= std::f32::consts::TAU;
+                        changed
+                    })
+                });
+
+                return_if_unchanged![new_big_r, new_small_r, new_angle];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::TorusSector(TorusSector {
+                        big_r: new_big_r.unwrap_or(*big_r),
+                        small_r: new_small_r.unwrap_or(*small_r),
+                        angle: new_angle.unwrap_or(*angle),
+                    }),
+                ));
+            });
+        }
+        NodeData::BiconvexLens(BiconvexLens {
+            lower_sagitta,
+            upper_sagitta,
+            chord,
+        }) => {
+            let default = BiconvexLens::default();
+            util::grid(ui, |ui| {
+                events.extend(util::render_node_prelude_with_events(ui, node));
+
+                let new_lower_sagitta =
+                    row(ui, "Lower sagitta", *lower_sagitta, default.lower_sagitta);
+                let new_upper_sagitta =
+                    row(ui, "Upper sagitta", *upper_sagitta, default.upper_sagitta);
+                let new_chord = row(ui, "Chord", *chord, default.chord);
+
+                return_if_unchanged![new_lower_sagitta, new_upper_sagitta, new_chord];
+
+                events.push(GraphEvent::ReplaceData(
+                    node_id,
+                    NodeData::BiconvexLens(BiconvexLens {
+                        lower_sagitta: new_lower_sagitta.unwrap_or(*lower_sagitta),
+                        upper_sagitta: new_upper_sagitta.unwrap_or(*upper_sagitta),
+                        chord: new_chord.unwrap_or(*chord),
+                    }),
+                ));
             });
         }
 

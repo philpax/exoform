@@ -1,6 +1,9 @@
+use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
 use crate::{NodeCategory, NodeId};
+
+// Primitives
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Sphere {
@@ -56,6 +59,153 @@ impl Default for Torus {
         Self::new()
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Plane {
+    // *Must* be normalised!
+    pub normal: Vec3,
+    pub distance_from_origin: f32,
+}
+impl Plane {
+    pub const fn new() -> Plane {
+        let normal = glam::const_vec3!([0.0, 1.0, 0.0]);
+        Plane {
+            normal,
+            distance_from_origin: 0.0,
+        }
+    }
+}
+impl Default for Plane {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Capsule {
+    pub points: [Vec3; 2],
+    pub radius: f32,
+}
+impl Capsule {
+    pub const fn new() -> Capsule {
+        Capsule {
+            points: [
+                glam::const_vec3!([0.0, 0.0, 0.0]),
+                glam::const_vec3!([0.0, 1.0, 0.0]),
+            ],
+            radius: 1.0,
+        }
+    }
+}
+impl Default for Capsule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TaperedCapsule {
+    pub points: [Vec3; 2],
+    pub radii: [f32; 2],
+}
+impl TaperedCapsule {
+    pub const fn new() -> TaperedCapsule {
+        TaperedCapsule {
+            points: [
+                glam::const_vec3!([0.0, 0.0, 0.0]),
+                glam::const_vec3!([0.0, 1.0, 0.0]),
+            ],
+            radii: [1.0, 1.0],
+        }
+    }
+}
+impl Default for TaperedCapsule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Cone {
+    pub radius: f32,
+    pub height: f32,
+}
+impl Cone {
+    pub const fn new() -> Cone {
+        Cone {
+            radius: 1.0,
+            height: 1.0,
+        }
+    }
+}
+impl Default for Cone {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Box {
+    pub half_size: Vec3,
+    pub rounding_radius: f32,
+}
+impl Box {
+    pub const fn new() -> Box {
+        Box {
+            half_size: glam::const_vec3!([0.5, 0.5, 0.5]),
+            rounding_radius: 0.0,
+        }
+    }
+}
+impl Default for Box {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TorusSector {
+    pub big_r: f32,
+    pub small_r: f32,
+    pub angle: f32,
+}
+impl TorusSector {
+    pub const fn new() -> TorusSector {
+        TorusSector {
+            big_r: 1.0,
+            small_r: 0.1,
+            angle: std::f32::consts::PI,
+        }
+    }
+}
+impl Default for TorusSector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BiconvexLens {
+    pub lower_sagitta: f32,
+    pub upper_sagitta: f32,
+    pub chord: f32,
+}
+impl BiconvexLens {
+    pub const fn new() -> BiconvexLens {
+        BiconvexLens {
+            lower_sagitta: 0.5,
+            upper_sagitta: 0.5,
+            chord: 0.5,
+        }
+    }
+}
+impl Default for BiconvexLens {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Combinators
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Union {
@@ -114,11 +264,21 @@ impl Default for Subtract {
     }
 }
 
+// TODO: consider using a macro to generate the NodeData enum members
+// TODO: consider moving name/category to static methods on the structs, or using a trait
+// TODO: consider generating delta structs for each NodeData type using a macro
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeData {
     Sphere(Sphere),
     Cylinder(Cylinder),
     Torus(Torus),
+    Plane(Plane),
+    Capsule(Capsule),
+    TaperedCapsule(TaperedCapsule),
+    Cone(Cone),
+    Box(Box),
+    TorusSector(TorusSector),
+    BiconvexLens(BiconvexLens),
 
     Union(Union),
     Intersect(Intersect),
@@ -130,6 +290,13 @@ impl NodeData {
             NodeData::Sphere(_) => "Sphere",
             NodeData::Cylinder(_) => "Cylinder",
             NodeData::Torus(_) => "Torus",
+            NodeData::Plane(_) => "Plane",
+            NodeData::Capsule(_) => "Capsule",
+            NodeData::TaperedCapsule(_) => "Tapered Capsule",
+            NodeData::Cone(_) => "Cone",
+            NodeData::Box(_) => "Box",
+            NodeData::TorusSector(_) => "Torus Sector",
+            NodeData::BiconvexLens(_) => "Biconvex Lens",
 
             NodeData::Union(_) => "Union",
             NodeData::Intersect(_) => "Intersect",
@@ -142,6 +309,13 @@ impl NodeData {
             NodeData::Sphere(_) => NodeCategory::Primitive,
             NodeData::Cylinder(_) => NodeCategory::Primitive,
             NodeData::Torus(_) => NodeCategory::Primitive,
+            NodeData::Plane(_) => NodeCategory::Primitive,
+            NodeData::Capsule(_) => NodeCategory::Primitive,
+            NodeData::TaperedCapsule(_) => NodeCategory::Primitive,
+            NodeData::Cone(_) => NodeCategory::Primitive,
+            NodeData::Box(_) => NodeCategory::Primitive,
+            NodeData::TorusSector(_) => NodeCategory::Primitive,
+            NodeData::BiconvexLens(_) => NodeCategory::Primitive,
 
             NodeData::Union(_) => NodeCategory::Operation,
             NodeData::Intersect(_) => NodeCategory::Operation,
@@ -180,6 +354,13 @@ impl NodeData {
             NodeData::Sphere(_) => panic!("this node does not support children"),
             NodeData::Cylinder(_) => panic!("this node does not support children"),
             NodeData::Torus(_) => panic!("this node does not support children"),
+            NodeData::Plane(_) => panic!("this node does not support children"),
+            NodeData::Capsule(_) => panic!("this node does not support children"),
+            NodeData::TaperedCapsule(_) => panic!("this node does not support children"),
+            NodeData::Cone(_) => panic!("this node does not support children"),
+            NodeData::Box(_) => panic!("this node does not support children"),
+            NodeData::TorusSector(_) => panic!("this node does not support children"),
+            NodeData::BiconvexLens(_) => panic!("this node does not support children"),
 
             NodeData::Union(Union { children, .. }) => add_to_vec(children, index, child_id),
             NodeData::Intersect(Intersect { children, .. }) => {
@@ -208,6 +389,13 @@ impl NodeData {
             NodeData::Sphere(_) => panic!("this node does not support children"),
             NodeData::Cylinder(_) => panic!("this node does not support children"),
             NodeData::Torus(_) => panic!("this node does not support children"),
+            NodeData::Plane(_) => panic!("this node does not support children"),
+            NodeData::Capsule(_) => panic!("this node does not support children"),
+            NodeData::TaperedCapsule(_) => panic!("this node does not support children"),
+            NodeData::Cone(_) => panic!("this node does not support children"),
+            NodeData::Box(_) => panic!("this node does not support children"),
+            NodeData::TorusSector(_) => panic!("this node does not support children"),
+            NodeData::BiconvexLens(_) => panic!("this node does not support children"),
 
             NodeData::Union(Union { children, .. }) => remove_from_vec(children, child_id),
             NodeData::Intersect(Intersect { children, .. }) => {
@@ -244,6 +432,13 @@ impl NodeData {
             NodeData::Sphere(_) => panic!("this node does not support children"),
             NodeData::Cylinder(_) => panic!("this node does not support children"),
             NodeData::Torus(_) => panic!("this node does not support children"),
+            NodeData::Plane(_) => panic!("this node does not support children"),
+            NodeData::Capsule(_) => panic!("this node does not support children"),
+            NodeData::TaperedCapsule(_) => panic!("this node does not support children"),
+            NodeData::Cone(_) => panic!("this node does not support children"),
+            NodeData::Box(_) => panic!("this node does not support children"),
+            NodeData::TorusSector(_) => panic!("this node does not support children"),
+            NodeData::BiconvexLens(_) => panic!("this node does not support children"),
 
             NodeData::Union(Union { children, .. }) => {
                 replace_in_vec(children, old_child_id, new_child_id)
@@ -257,3 +452,21 @@ impl NodeData {
         }
     }
 }
+
+pub const NODE_DATA_DEFAULTS: &[NodeData] = &[
+    // primitives
+    NodeData::Sphere(Sphere::new()),
+    NodeData::Cylinder(Cylinder::new()),
+    NodeData::Torus(Torus::new()),
+    NodeData::Plane(Plane::new()),
+    NodeData::Capsule(Capsule::new()),
+    NodeData::TaperedCapsule(TaperedCapsule::new()),
+    NodeData::Cone(Cone::new()),
+    NodeData::Box(Box::new()),
+    NodeData::TorusSector(TorusSector::new()),
+    NodeData::BiconvexLens(BiconvexLens::new()),
+    // operations
+    NodeData::Union(Union::new()),
+    NodeData::Intersect(Intersect::new()),
+    NodeData::Subtract(Subtract::new()),
+];
