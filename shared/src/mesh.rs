@@ -15,7 +15,8 @@ pub fn generate_mesh(graph: &Graph) -> Option<Mesh> {
     let mut saft_graph = saft::Graph::default();
     let root_id = node_to_saft_node(&mut saft_graph, graph, graph.root_node_id)?;
 
-    if saft_graph.bounding_box(root_id).volume() == 0.0 {
+    let bounding_box = saft_graph.bounding_box(root_id);
+    if bounding_box.volume() == 0.0 || !bounding_box.is_finite() {
         return None;
     }
     let mesh = saft::mesh_from_sdf(&saft_graph, root_id, saft::MeshOptions::default()).ok()?;
@@ -67,6 +68,29 @@ fn node_to_saft_node_data(
             rounding_radius,
         }) => Some(saft_graph.rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
         NodeData::Torus(Torus { big_r, small_r }) => Some(saft_graph.torus(*big_r, *small_r)),
+        NodeData::Plane(Plane {
+            normal,
+            distance_from_origin,
+        }) => Some(saft_graph.plane((*normal, *distance_from_origin).into())),
+        NodeData::Capsule(Capsule { points, radius }) => Some(saft_graph.capsule(*points, *radius)),
+        NodeData::TaperedCapsule(TaperedCapsule { points, radii }) => {
+            Some(saft_graph.tapered_capsule(*points, *radii))
+        }
+        NodeData::Cone(Cone { radius, height }) => Some(saft_graph.cone(*radius, *height)),
+        NodeData::Box(Box {
+            half_size,
+            rounding_radius,
+        }) => Some(saft_graph.rounded_box(*half_size, *rounding_radius)),
+        NodeData::TorusSector(TorusSector {
+            big_r,
+            small_r,
+            angle,
+        }) => Some(saft_graph.torus_sector(*big_r, *small_r, angle / 2.0)),
+        NodeData::BiconvexLens(BiconvexLens {
+            lower_sagitta,
+            upper_sagitta,
+            chord,
+        }) => Some(saft_graph.biconvex_lens(*lower_sagitta, *upper_sagitta, *chord)),
 
         NodeData::Union(Union {
             factor: size,
