@@ -13,6 +13,8 @@ bevy_egui = {path = "../crates/bevy_egui"}
 bimap = "0.6.2"
 glam = "0.20.5"
 shared = {path = "../shared"}
+tungstenite = "0.17.2"
+url = "2.2.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 bevy_web_fullscreen = {git = "https://github.com/oscrim/bevy_web_fullscreen.git"}

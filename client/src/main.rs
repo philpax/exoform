@@ -65,4 +65,21 @@ fn setup(mut commands: Commands) {
             radius: eye.distance(target),
             ..Default::default()
         });
+
+    let (mut socket, response) =
+        tungstenite::connect(url::Url::parse("ws://localhost:8080/ws").unwrap())
+            .expect("Can't connect");
+
+    println!("Connected to the server");
+    println!("Response HTTP code: {}", response.status());
+    println!("Response contains the following headers:");
+    for (ref header, _value) in response.headers() {
+        println!("* {}", header);
+    }
+
+    socket
+        .write_message(tungstenite::Message::Text("Hello WebSocket".into()))
+        .unwrap();
+    let msg = socket.read_message().expect("Error reading message");
+    println!("Received: {}", msg);
 }

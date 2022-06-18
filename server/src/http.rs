@@ -18,7 +18,7 @@ enum Body<'a> {
 }
 
 pub struct ClientProcess {
-    stream: net::TcpStream,
+    stream: Option<net::TcpStream>,
     files: ProcessRef<FileStore>,
 }
 
@@ -39,12 +39,14 @@ impl ClientProcess {
         };
         fields.push(("Content-Length", body.len().to_string()));
 
-        http_tiny::Header::new(
-            http_tiny::HeaderStartLine::new_response(status, reason),
-            http_tiny::HeaderFields::from_iter(fields.into_iter()),
-        )
-        .write_all(&mut self.stream)?;
-        self.stream.write_all(body)?;
+        if let Some(ref mut stream) = self.stream {
+            http_tiny::Header::new(
+                http_tiny::HeaderStartLine::new_response(status, reason),
+                http_tiny::HeaderFields::from_iter(fields.into_iter()),
+            )
+            .write_all(stream)?;
+            stream.write_all(body)?;
+        }
 
         Ok(())
     }
@@ -80,12 +82,32 @@ impl AbstractProcess for ClientProcess {
             },
         );
 
-        ClientProcess { stream, files }
+        ClientProcess {
+            stream: Some(stream),
+            files,
+        }
     }
 }
 
 impl ProcessMessage<HttpRequest> for ClientProcess {
     fn handle(state: &mut Self::State, HttpRequest(method, target): HttpRequest) {
+        let return_404 = |state: &mut Self::State| {
+            state
+                .respond(
+                    (404, "Not Found"),
+                    "text/html".to_string(),
+                    Body::Text({
+                        use malvolio::prelude::*;
+
+                        html()
+                            .head(head().child(title("There be dragons here")))
+                            .body(body().h1("404 Not Found"))
+                            .to_string()
+                    }),
+                )
+                .unwrap();
+        };
+
         if method == "GET" {
             let target = if target.is_empty() {
                 "index.html".to_owned()
@@ -93,27 +115,41 @@ impl ProcessMessage<HttpRequest> for ClientProcess {
                 target
             };
 
+            if target == "ws" {
+                println!("{method} {target}");
+                use tungstenite::handshake::server::{Request, Response};
+                let callback = |req: &Request, response: Response| {
+                    println!("Received a new ws handshake");
+                    println!("The request's path is: {}", req.uri().path());
+                    println!("The request's headers are:");
+                    for (ref header, _value) in req.headers() {
+                        println!("* {}", header);
+                    }
+
+                    Ok(response)
+                };
+                let stream = state.stream.take().unwrap();
+                let mut websocket = tungstenite::accept_hdr(stream, callback).unwrap();
+                loop {
+                    let msg = websocket.read_message().unwrap();
+
+                    // We do not want to send back ping/pong messages.
+                    if msg.is_binary() || msg.is_text() {
+                        websocket.write_message(msg).unwrap();
+                    }
+                }
+            }
+
             if let Some(file) = state.files.request(target) {
-                return state
+                state
                     .respond((200, "OK"), file.mime_type, Body::Gzip(&file.data))
                     .unwrap();
+            } else {
+                return_404(state);
             }
+        } else {
+            return_404(state);
         }
-
-        state
-            .respond(
-                (404, "Not Found"),
-                "text/html".to_string(),
-                Body::Text({
-                    use malvolio::prelude::*;
-
-                    html()
-                        .head(head().child(title("There be dragons here")))
-                        .body(body().h1("404 Not Found"))
-                        .to_string()
-                }),
-            )
-            .unwrap();
 
         std::process::exit(0);
     }
