@@ -345,8 +345,8 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
                     node_id,
                     NodeData::Capsule(Capsule {
                         points: [
-                            new_points_0.unwrap_or(default.points[0]),
-                            new_points_1.unwrap_or(default.points[1]),
+                            new_points_0.unwrap_or(points[0]),
+                            new_points_1.unwrap_or(points[1]),
                         ],
                         radius: new_radius.unwrap_or(*radius),
                     }),
@@ -373,12 +373,12 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
                     node_id,
                     NodeData::TaperedCapsule(TaperedCapsule {
                         points: [
-                            new_points_0.unwrap_or(default.points[0]),
-                            new_points_1.unwrap_or(default.points[1]),
+                            new_points_0.unwrap_or(points[0]),
+                            new_points_1.unwrap_or(points[1]),
                         ],
                         radii: [
-                            new_radius_0.unwrap_or(default.radii[0]),
-                            new_radius_1.unwrap_or(default.radii[1]),
+                            new_radius_0.unwrap_or(radii[0]),
+                            new_radius_1.unwrap_or(radii[1]),
                         ],
                     }),
                 ));
