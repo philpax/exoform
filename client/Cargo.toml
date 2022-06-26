@@ -15,7 +15,7 @@ glam = "0.20.5"
 shared = {path = "../shared"}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-bevy_web_fullscreen = {git = "https://github.com/oscrim/bevy_web_fullscreen.git"}
+bevy_web_fullscreen = {path = "../crates/bevy_web_fullscreen"}
 console_error_panic_hook = "0.1.7"
 console_log = "0.2.0"
 js-sys = "0.3.57"
