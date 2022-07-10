@@ -4,3 +4,5 @@ resolver = "2"
 
 [patch.crates-io]
 bevy = {git = 'https://github.com/bevyengine/bevy.git'}
+bevy_mod_picking = {git = "https://github.com/teh-cmc/bevy_mod_picking", branch = "main"}
+bevy_mod_raycast = {git = "https://github.com/teh-cmc/bevy_mod_raycast", branch = "main"}

@@ -38,6 +38,8 @@ pub fn main() {
     app.add_plugin(EguiPlugin)
         .add_plugin(ui::UiPlugin)
         .add_plugin(mesh_generation::MeshGenerationPlugin)
+        .add_plugins(bevy_mod_picking::DefaultPickingPlugins)
+        .add_plugin(bevy_transform_gizmo::TransformGizmoPlugin::default())
         .add_startup_system(setup)
         .add_system(camera::pan_orbit_camera)
         .run();
@@ -53,6 +55,7 @@ fn setup(mut commands: Commands) {
         transform: Transform::from_xyz(4.0, 8.0, 4.0),
         ..default()
     });
+
     let eye = Vec3::new(-2.0, 5.0, 5.0);
     let target = Vec3::new(0., 0., 0.);
     let transform = Transform::from_translation(eye).looking_at(target, Vec3::Y);
@@ -61,8 +64,10 @@ fn setup(mut commands: Commands) {
             transform,
             ..Default::default()
         })
-        .insert(camera::PanOrbitCamera {
-            radius: eye.distance(target),
-            ..Default::default()
-        });
+        // .insert(camera::PanOrbitCamera {
+        //     radius: eye.distance(target),
+        //     ..Default::default()
+        // })
+        .insert_bundle(bevy_mod_picking::PickingCameraBundle::default())
+        .insert(bevy_transform_gizmo::GizmoPickSource::default());
 }

@@ -94,7 +94,7 @@ impl Graph {
         }
     }
 
-    fn find_all_reachable_nodes(&self, node_id: NodeId, seen: &mut HashSet<NodeId>) {
+    pub fn find_all_reachable_nodes(&self, node_id: NodeId, seen: &mut HashSet<NodeId>) {
         let node = self.get(node_id).unwrap();
         seen.insert(node.id);
         match &node.data {
