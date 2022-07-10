@@ -3,6 +3,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::{NodeCategory, NodeId};
 
+pub enum ChildrenCount {
+    None,
+    Bounded(usize),
+    Unbounded,
+}
+
+pub trait NodeDataMeta {
+    fn name(&self) -> &'static str;
+    fn category(&self) -> NodeCategory;
+
+    fn children_count(&self) -> ChildrenCount {
+        ChildrenCount::None
+    }
+}
+
 // Primitives
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -17,6 +32,14 @@ impl Sphere {
 impl Default for Sphere {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Sphere {
+    fn name(&self) -> &'static str {
+        "Sphere"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -40,6 +63,14 @@ impl Default for Cylinder {
         Self::new()
     }
 }
+impl NodeDataMeta for Cylinder {
+    fn name(&self) -> &'static str {
+        "Cylinder"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Torus {
@@ -57,6 +88,14 @@ impl Torus {
 impl Default for Torus {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Torus {
+    fn name(&self) -> &'static str {
+        "Torus"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -78,6 +117,14 @@ impl Plane {
 impl Default for Plane {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Plane {
+    fn name(&self) -> &'static str {
+        "Plane"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -102,6 +149,14 @@ impl Default for Capsule {
         Self::new()
     }
 }
+impl NodeDataMeta for Capsule {
+    fn name(&self) -> &'static str {
+        "Capsule"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TaperedCapsule {
@@ -124,6 +179,14 @@ impl Default for TaperedCapsule {
         Self::new()
     }
 }
+impl NodeDataMeta for TaperedCapsule {
+    fn name(&self) -> &'static str {
+        "Tapered Capsule"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cone {
@@ -143,6 +206,14 @@ impl Default for Cone {
         Self::new()
     }
 }
+impl NodeDataMeta for Cone {
+    fn name(&self) -> &'static str {
+        "Cone"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Box {
@@ -160,6 +231,14 @@ impl Box {
 impl Default for Box {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Box {
+    fn name(&self) -> &'static str {
+        "Box"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -183,6 +262,14 @@ impl Default for TorusSector {
         Self::new()
     }
 }
+impl NodeDataMeta for TorusSector {
+    fn name(&self) -> &'static str {
+        "Torus Sector"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BiconvexLens {
@@ -202,6 +289,14 @@ impl BiconvexLens {
 impl Default for BiconvexLens {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for BiconvexLens {
+    fn name(&self) -> &'static str {
+        "Biconvex Lens"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -225,6 +320,17 @@ impl Default for Union {
         Self::new()
     }
 }
+impl NodeDataMeta for Union {
+    fn name(&self) -> &'static str {
+        "Union"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Operation
+    }
+    fn children_count(&self) -> ChildrenCount {
+        ChildrenCount::Unbounded
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Intersect {
@@ -244,6 +350,17 @@ impl Default for Intersect {
         Self::new()
     }
 }
+impl NodeDataMeta for Intersect {
+    fn name(&self) -> &'static str {
+        "Intersect"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Operation
+    }
+    fn children_count(&self) -> ChildrenCount {
+        ChildrenCount::Bounded(2)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Subtract {
@@ -261,6 +378,17 @@ impl Subtract {
 impl Default for Subtract {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Subtract {
+    fn name(&self) -> &'static str {
+        "Subtract"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Operation
+    }
+    fn children_count(&self) -> ChildrenCount {
+        ChildrenCount::Unbounded
     }
 }
 
@@ -285,42 +413,30 @@ pub enum NodeData {
     Subtract(Subtract),
 }
 impl NodeData {
-    pub const fn name(&self) -> &str {
+    pub const fn as_node_data_meta(&self) -> &dyn NodeDataMeta {
         match self {
-            NodeData::Sphere(_) => "Sphere",
-            NodeData::Cylinder(_) => "Cylinder",
-            NodeData::Torus(_) => "Torus",
-            NodeData::Plane(_) => "Plane",
-            NodeData::Capsule(_) => "Capsule",
-            NodeData::TaperedCapsule(_) => "Tapered Capsule",
-            NodeData::Cone(_) => "Cone",
-            NodeData::Box(_) => "Box",
-            NodeData::TorusSector(_) => "Torus Sector",
-            NodeData::BiconvexLens(_) => "Biconvex Lens",
-
-            NodeData::Union(_) => "Union",
-            NodeData::Intersect(_) => "Intersect",
-            NodeData::Subtract(_) => "Subtract",
+            NodeData::Sphere(d) => d as &dyn NodeDataMeta,
+            NodeData::Cylinder(d) => d as &dyn NodeDataMeta,
+            NodeData::Torus(d) => d as &dyn NodeDataMeta,
+            NodeData::Plane(d) => d as &dyn NodeDataMeta,
+            NodeData::Capsule(d) => d as &dyn NodeDataMeta,
+            NodeData::TaperedCapsule(d) => d as &dyn NodeDataMeta,
+            NodeData::Cone(d) => d as &dyn NodeDataMeta,
+            NodeData::Box(d) => d as &dyn NodeDataMeta,
+            NodeData::TorusSector(d) => d as &dyn NodeDataMeta,
+            NodeData::BiconvexLens(d) => d as &dyn NodeDataMeta,
+            NodeData::Union(d) => d as &dyn NodeDataMeta,
+            NodeData::Intersect(d) => d as &dyn NodeDataMeta,
+            NodeData::Subtract(d) => d as &dyn NodeDataMeta,
         }
     }
 
-    pub const fn category(&self) -> NodeCategory {
-        match self {
-            NodeData::Sphere(_) => NodeCategory::Primitive,
-            NodeData::Cylinder(_) => NodeCategory::Primitive,
-            NodeData::Torus(_) => NodeCategory::Primitive,
-            NodeData::Plane(_) => NodeCategory::Primitive,
-            NodeData::Capsule(_) => NodeCategory::Primitive,
-            NodeData::TaperedCapsule(_) => NodeCategory::Primitive,
-            NodeData::Cone(_) => NodeCategory::Primitive,
-            NodeData::Box(_) => NodeCategory::Primitive,
-            NodeData::TorusSector(_) => NodeCategory::Primitive,
-            NodeData::BiconvexLens(_) => NodeCategory::Primitive,
+    pub fn name(&self) -> &str {
+        self.as_node_data_meta().name()
+    }
 
-            NodeData::Union(_) => NodeCategory::Operation,
-            NodeData::Intersect(_) => NodeCategory::Operation,
-            NodeData::Subtract(_) => NodeCategory::Operation,
-        }
+    pub fn category(&self) -> NodeCategory {
+        self.as_node_data_meta().category()
     }
 
     pub(crate) fn add_child(&mut self, index: Option<usize>, child_id: NodeId) {
