@@ -1,9 +1,7 @@
-use std::collections::HashSet;
-
-use super::{render_egui_tree, SelectedNode};
+use super::SelectedNode;
 use bevy::prelude::*;
 use bevy_egui::egui;
-use shared::{Graph, GraphEvent, Node, NodeData, NodeId};
+use shared::{Graph, GraphEvent, Node, NodeData, NodeDataMeta, NodeId};
 
 pub fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
     egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
@@ -230,39 +228,133 @@ pub fn render_add_button_max_width(
     render_add_dropdown(ui, response, true)
 }
 
-pub fn render_removable_trees(
+pub fn render_egui_tree(
     ui: &mut egui::Ui,
     graph: &Graph,
     selected_node: &mut SelectedNode,
-    parent_id: NodeId,
-    children: &[NodeId],
+    parent_node_id: Option<NodeId>,
+    node_id: NodeId,
     depth: usize,
-) -> impl Iterator<Item = GraphEvent> {
-    let depth = depth + 1;
+) -> Vec<GraphEvent> {
+    let node = graph.get(node_id).unwrap();
+
+    let mut events = vec![];
+    ui.push_id(node_id, |ui| {
+        let id = ui.make_persistent_id(node.data.name());
+        if node.data.can_have_children() {
+            egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+                .show_header(ui, |ui| {
+                    events.extend(render_header(
+                        ui,
+                        graph,
+                        selected_node,
+                        parent_node_id,
+                        node_id,
+                        depth,
+                    ))
+                })
+                .body(|ui| {
+                    events.extend(render_children(ui, graph, selected_node, node, depth));
+                });
+        } else {
+            ui.horizontal(|ui| {
+                events.extend(render_header(
+                    ui,
+                    graph,
+                    selected_node,
+                    parent_node_id,
+                    node_id,
+                    depth,
+                ));
+            });
+        }
+    });
+
+    events
+}
+
+fn render_header(
+    ui: &mut egui::Ui,
+    graph: &Graph,
+    selected_node: &mut SelectedNode,
+    parent_node_id: Option<NodeId>,
+    node_id: NodeId,
+    depth: usize,
+) -> Vec<GraphEvent> {
     let mut events = vec![];
 
-    let mut to_remove = HashSet::new();
-    for child_id in children {
-        let (mut child_events, remove) =
-            render_egui_tree(ui, graph, selected_node, Some(parent_id), *child_id, depth);
-        events.append(&mut child_events);
+    if let Some(parent_node_id) = parent_node_id {
+        if ui
+            .add(coloured_button("❌", egui::Color32::LIGHT_RED.into()))
+            .clicked()
+        {
+            events.push(GraphEvent::RemoveChild(parent_node_id, node_id));
+        }
 
-        if remove {
-            to_remove.insert(*child_id);
+        if let Some(node_data) = render_add_parent_button(ui, depth_to_color(depth - 1, true)) {
+            events.push(GraphEvent::AddNewParent(parent_node_id, node_id, node_data));
         }
     }
-    events.extend(
-        to_remove
-            .into_iter()
-            .map(move |child_id| GraphEvent::RemoveChild(parent_id, child_id)),
-    );
 
-    let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
-    if let Some(node_data) = new_child {
-        events.push(GraphEvent::AddChild(parent_id, None, node_data));
+    let interact_size = ui.spacing().interact_size;
+    let is_selected = selected_node.0 == Some(node_id);
+    let name = graph.get(node_id).unwrap().data.name();
+    let (bg_colour, fg_colour) = (depth_to_color(depth, is_selected), egui::Color32::WHITE);
+    if ui
+        .add_sized(
+            egui::Vec2::new(ui.available_width(), interact_size.y),
+            egui::Button::new(
+                egui::RichText::new(name)
+                    .color(fg_colour)
+                    .family(egui::FontFamily::Monospace),
+            )
+            .fill(bg_colour)
+            .sense(egui::Sense::click()),
+        )
+        .clicked()
+    {
+        selected_node.0 = match selected_node.0 {
+            Some(selected_node_id) if selected_node_id == node_id => None,
+            _ => Some(node_id),
+        };
     }
 
-    events.into_iter()
+    events
+}
+
+pub fn render_children(
+    ui: &mut egui::Ui,
+    graph: &Graph,
+    selected_node: &mut SelectedNode,
+    parent: &Node,
+    depth: usize,
+) -> Vec<GraphEvent> {
+    let depth = depth + 1;
+    let mut events: Vec<_> = parent
+        .children
+        .iter()
+        .enumerate()
+        .flat_map(|(idx, child_id)| {
+            render_removable_tree_opt(
+                ui,
+                graph,
+                selected_node,
+                parent.id,
+                *child_id,
+                Some(idx),
+                depth,
+            )
+        })
+        .collect();
+
+    if parent.data.can_have_children() {
+        let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
+        if let Some(node_data) = new_child {
+            events.push(GraphEvent::AddChild(parent.id, None, node_data));
+        }
+    }
+
+    events
 }
 
 pub fn render_removable_tree_opt(
@@ -271,35 +363,40 @@ pub fn render_removable_tree_opt(
     selected_node: &mut SelectedNode,
     parent_id: NodeId,
     child_id_opt: Option<NodeId>,
-    child_index: usize,
+    child_index: Option<usize>,
     depth: usize,
 ) -> impl Iterator<Item = GraphEvent> {
-    let depth = depth + 1;
     let mut events = vec![];
 
     match child_id_opt {
         Some(child_id) => {
-            let (mut child_events, remove) =
-                render_egui_tree(ui, graph, selected_node, Some(parent_id), child_id, depth);
-            events.append(&mut child_events);
-
-            if remove {
-                events.push(GraphEvent::RemoveChild(parent_id, child_id));
-            }
+            events.append(&mut render_egui_tree(
+                ui,
+                graph,
+                selected_node,
+                Some(parent_id),
+                child_id,
+                depth,
+            ));
         }
         None => {
-            let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
-            if let Some(node_data) = new_child {
-                events.push(GraphEvent::AddChild(
-                    parent_id,
-                    Some(child_index),
-                    node_data,
-                ));
+            if let Some(event) = render_add_button(ui, depth, parent_id, child_index) {
+                events.push(event);
             }
         }
     };
 
     events.into_iter()
+}
+
+fn render_add_button(
+    ui: &mut egui::Ui,
+    depth: usize,
+    parent_id: NodeId,
+    child_index: Option<usize>,
+) -> Option<GraphEvent> {
+    let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
+    new_child.map(|node_data| GraphEvent::AddChild(parent_id, child_index, node_data))
 }
 
 pub fn depth_to_color(depth: usize, is_selected: bool) -> egui::color::Hsva {

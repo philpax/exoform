@@ -3,8 +3,8 @@ use bevy_egui::{egui, EguiContext};
 
 use super::OccupiedScreenSpace;
 use shared::{
-    BiconvexLens, Box, Capsule, Cone, Cylinder, Graph, GraphEvent, Intersect, NodeData, NodeId,
-    Plane, Sphere, Subtract, TaperedCapsule, Torus, TorusSector, Union,
+    BiconvexLens, Box, Capsule, Cone, Cylinder, Graph, GraphEvent, Intersect, NodeData,
+    NodeDataMeta, NodeId, Plane, Sphere, Subtract, TaperedCapsule, Torus, TorusSector, Union,
 };
 
 mod util;
@@ -47,17 +47,14 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                events.append(
-                    &mut render_egui_tree(
-                        ui,
-                        &graph,
-                        &mut selected_node,
-                        None,
-                        graph.root_node_id,
-                        0,
-                    )
-                    .0,
-                );
+                events.append(&mut util::render_egui_tree(
+                    ui,
+                    &graph,
+                    &mut selected_node,
+                    None,
+                    graph.root_node_id,
+                    0,
+                ));
             });
         })
         .response
@@ -78,162 +75,6 @@ fn sdf_code_editor(
         .width();
 
     graph.apply_events(&events);
-}
-
-fn render_egui_tree(
-    ui: &mut egui::Ui,
-    graph: &Graph,
-    selected_node: &mut SelectedNode,
-    parent_node_id: Option<NodeId>,
-    node_id: NodeId,
-    depth: usize,
-) -> (Vec<GraphEvent>, bool) {
-    let name = graph.get(node_id).unwrap().data.name().to_owned();
-
-    let mut events = vec![];
-
-    let mut remove = false;
-    ui.push_id(node_id, |ui| {
-        let id = ui.make_persistent_id(name);
-        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
-            .show_header(ui, |ui| {
-                events.extend(render_header(
-                    ui,
-                    graph,
-                    selected_node,
-                    &mut remove,
-                    parent_node_id,
-                    node_id,
-                    depth,
-                ))
-            })
-            .body(|ui| events.extend(render_body(ui, graph, selected_node, node_id, depth)))
-    });
-
-    (events, remove)
-}
-
-fn render_header(
-    ui: &mut egui::Ui,
-    graph: &Graph,
-    selected_node: &mut SelectedNode,
-    remove: &mut bool,
-    parent_node_id: Option<NodeId>,
-    node_id: NodeId,
-    depth: usize,
-) -> Vec<GraphEvent> {
-    let mut events = vec![];
-
-    let is_selected = selected_node.0 == Some(node_id);
-    let name = graph.get(node_id).unwrap().data.name();
-
-    if ui
-        .add(util::coloured_button("❌", egui::Color32::LIGHT_RED.into()))
-        .clicked()
-    {
-        *remove = true;
-    }
-
-    if let Some(parent_node_id) = parent_node_id {
-        if let Some(node_data) =
-            util::render_add_parent_button(ui, util::depth_to_color(depth - 1, true))
-        {
-            events.push(GraphEvent::AddNewParent(parent_node_id, node_id, node_data));
-        }
-    }
-
-    let interact_size = ui.spacing().interact_size;
-    let (bg_colour, fg_colour) = (
-        util::depth_to_color(depth, is_selected),
-        egui::Color32::WHITE,
-    );
-    if ui
-        .add_sized(
-            egui::Vec2::new(ui.available_width(), interact_size.y),
-            egui::Button::new(
-                egui::RichText::new(name)
-                    .color(fg_colour)
-                    .family(egui::FontFamily::Monospace),
-            )
-            .fill(bg_colour)
-            .sense(egui::Sense::click()),
-        )
-        .clicked()
-    {
-        selected_node.0 = match selected_node.0 {
-            Some(selected_node_id) if selected_node_id == node_id => None,
-            _ => Some(node_id),
-        };
-    }
-
-    events
-}
-
-fn render_body(
-    ui: &mut egui::Ui,
-    graph: &Graph,
-    selected_node: &mut SelectedNode,
-    node_id: NodeId,
-    depth: usize,
-) -> Vec<GraphEvent> {
-    let mut events = vec![];
-
-    let node = graph.get(node_id).unwrap();
-    match &node.data {
-        NodeData::Sphere(_) => {}
-        NodeData::Cylinder(_) => {}
-        NodeData::Torus(_) => {}
-        NodeData::Plane(_) => {}
-        NodeData::Capsule(_) => {}
-        NodeData::TaperedCapsule(_) => {}
-        NodeData::Cone(_) => {}
-        NodeData::Box(_) => {}
-        NodeData::TorusSector(_) => {}
-        NodeData::BiconvexLens(_) => {}
-
-        NodeData::Union(Union { children, .. }) => {
-            events.extend(util::render_removable_trees(
-                ui,
-                graph,
-                selected_node,
-                node_id,
-                children,
-                depth,
-            ));
-        }
-        NodeData::Intersect(Intersect { children, .. }) => {
-            events.extend(util::render_removable_tree_opt(
-                ui,
-                graph,
-                selected_node,
-                node_id,
-                children.0,
-                0,
-                depth,
-            ));
-            events.extend(util::render_removable_tree_opt(
-                ui,
-                graph,
-                selected_node,
-                node_id,
-                children.1,
-                1,
-                depth,
-            ));
-        }
-        NodeData::Subtract(Subtract { children, .. }) => {
-            events.extend(util::render_removable_trees(
-                ui,
-                graph,
-                selected_node,
-                node_id,
-                children,
-                depth,
-            ));
-        }
-    }
-
-    events
 }
 
 fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Vec<GraphEvent> {
@@ -491,42 +332,33 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
             });
         }
 
-        NodeData::Union(Union { factor, children }) => {
+        NodeData::Union(Union { factor }) => {
             let default = Union::default();
             let new_factor = util::factor_grid(ui, &mut events, node, *factor, default.factor);
             if let Some(factor) = new_factor {
                 events.push(GraphEvent::ReplaceData(
                     node_id,
-                    NodeData::Union(Union {
-                        factor,
-                        children: children.clone(),
-                    }),
+                    NodeData::Union(Union { factor }),
                 ))
             }
         }
-        NodeData::Intersect(Intersect { factor, children }) => {
+        NodeData::Intersect(Intersect { factor }) => {
             let default = Intersect::default();
             let new_factor = util::factor_grid(ui, &mut events, node, *factor, default.factor);
             if let Some(factor) = new_factor {
                 events.push(GraphEvent::ReplaceData(
                     node_id,
-                    NodeData::Intersect(Intersect {
-                        factor,
-                        children: children.clone(),
-                    }),
+                    NodeData::Intersect(Intersect { factor }),
                 ))
             }
         }
-        NodeData::Subtract(Subtract { factor, children }) => {
+        NodeData::Subtract(Subtract { factor }) => {
             let default = Subtract::default();
             let new_factor = util::factor_grid(ui, &mut events, node, *factor, default.factor);
             if let Some(factor) = new_factor {
                 events.push(GraphEvent::ReplaceData(
                     node_id,
-                    NodeData::Subtract(Subtract {
-                        factor,
-                        children: children.clone(),
-                    }),
+                    NodeData::Subtract(Subtract { factor }),
                 ))
             }
         }

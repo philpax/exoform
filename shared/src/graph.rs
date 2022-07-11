@@ -88,44 +88,12 @@ impl Graph {
         self.nodes.get_mut(&id)
     }
 
-    fn find_all_reachable_nodes_opt(&self, node_id: Option<NodeId>, seen: &mut HashSet<NodeId>) {
-        if let Some(node_id) = node_id {
-            self.find_all_reachable_nodes(node_id, seen)
-        }
-    }
-
     fn find_all_reachable_nodes(&self, node_id: NodeId, seen: &mut HashSet<NodeId>) {
-        let node = self.get(node_id).unwrap();
-        seen.insert(node.id);
-        match &node.data {
-            NodeData::Sphere(_) => {}
-            NodeData::Cylinder(_) => {}
-            NodeData::Torus(_) => {}
-            NodeData::Plane(_) => {}
-            NodeData::Capsule(_) => {}
-            NodeData::TaperedCapsule(_) => {}
-            NodeData::Cone(_) => {}
-            NodeData::Box(_) => {}
-            NodeData::TorusSector(_) => {}
-            NodeData::BiconvexLens(_) => {}
+        seen.insert(node_id);
 
-            NodeData::Union(Union { children, .. }) => {
-                for child_id in children {
-                    self.find_all_reachable_nodes(*child_id, seen);
-                }
-            }
-            NodeData::Intersect(Intersect {
-                children: (lhs, rhs),
-                ..
-            }) => {
-                self.find_all_reachable_nodes_opt(*lhs, seen);
-                self.find_all_reachable_nodes_opt(*rhs, seen);
-            }
-            NodeData::Subtract(Subtract { children, .. }) => {
-                for child_id in children {
-                    self.find_all_reachable_nodes(*child_id, seen);
-                }
-            }
+        let node = self.get(node_id).unwrap();
+        for child in node.children.iter().filter_map(|x| *x) {
+            self.find_all_reachable_nodes(child, seen);
         }
     }
 
@@ -142,19 +110,33 @@ impl Graph {
     fn apply_event(&mut self, event: &GraphEvent) -> Option<()> {
         match event {
             GraphEvent::AddChild(parent_id, index, node_data) => {
+                let (index, can_have_children) = {
+                    let parent = self.get(*parent_id)?;
+                    (
+                        index.unwrap_or(parent.children.len()),
+                        parent.data.can_have_children(),
+                    )
+                };
+                if !can_have_children {
+                    panic!("tried to add child to node without children");
+                }
+
                 let child_id = self.add(node_data.clone());
-                self.get_mut(*parent_id)?.data.add_child(*index, child_id);
+                let parent = self.get_mut(*parent_id)?;
+                parent.add_child(index, child_id);
             }
             GraphEvent::RemoveChild(parent_id, child_id) => {
-                self.get_mut(*parent_id)?.data.remove_child(*child_id);
+                let parent = self.get_mut(*parent_id)?;
+                parent.remove_child(*child_id);
             }
             GraphEvent::AddNewParent(parent_id, child_id, node_data) => {
                 let child_transform = self.get(*child_id)?.transform;
 
+                assert!(node_data.can_have_children());
                 let new_parent_id = self.add(node_data.clone());
                 {
                     let parent = self.get_mut(new_parent_id)?;
-                    parent.data.add_child(None, *child_id);
+                    parent.add_child(0, *child_id);
                     parent.transform = child_transform;
                 }
 
@@ -164,7 +146,7 @@ impl Graph {
                 }
 
                 let parent = self.get_mut(*parent_id)?;
-                parent.data.replace_child(*child_id, new_parent_id);
+                parent.replace_child(*child_id, new_parent_id);
             }
 
             GraphEvent::ReplaceData(node_id, data) => self.get_mut(*node_id)?.data = data.clone(),
