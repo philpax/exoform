@@ -1,7 +1,16 @@
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
-use crate::{NodeCategory, NodeId};
+use crate::NodeCategory;
+
+pub trait NodeDataMeta {
+    fn name(&self) -> &'static str;
+    fn category(&self) -> NodeCategory;
+
+    fn can_have_children(&self) -> bool {
+        false
+    }
+}
 
 // Primitives
 
@@ -17,6 +26,14 @@ impl Sphere {
 impl Default for Sphere {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Sphere {
+    fn name(&self) -> &'static str {
+        "Sphere"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -40,6 +57,14 @@ impl Default for Cylinder {
         Self::new()
     }
 }
+impl NodeDataMeta for Cylinder {
+    fn name(&self) -> &'static str {
+        "Cylinder"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Torus {
@@ -57,6 +82,14 @@ impl Torus {
 impl Default for Torus {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Torus {
+    fn name(&self) -> &'static str {
+        "Torus"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -78,6 +111,14 @@ impl Plane {
 impl Default for Plane {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Plane {
+    fn name(&self) -> &'static str {
+        "Plane"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -102,6 +143,14 @@ impl Default for Capsule {
         Self::new()
     }
 }
+impl NodeDataMeta for Capsule {
+    fn name(&self) -> &'static str {
+        "Capsule"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TaperedCapsule {
@@ -124,6 +173,14 @@ impl Default for TaperedCapsule {
         Self::new()
     }
 }
+impl NodeDataMeta for TaperedCapsule {
+    fn name(&self) -> &'static str {
+        "Tapered Capsule"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cone {
@@ -143,6 +200,14 @@ impl Default for Cone {
         Self::new()
     }
 }
+impl NodeDataMeta for Cone {
+    fn name(&self) -> &'static str {
+        "Cone"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Box {
@@ -160,6 +225,14 @@ impl Box {
 impl Default for Box {
     fn default() -> Self {
         Self::new()
+    }
+}
+impl NodeDataMeta for Box {
+    fn name(&self) -> &'static str {
+        "Box"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
     }
 }
 
@@ -183,6 +256,14 @@ impl Default for TorusSector {
         Self::new()
     }
 }
+impl NodeDataMeta for TorusSector {
+    fn name(&self) -> &'static str {
+        "Torus Sector"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BiconvexLens {
@@ -204,20 +285,24 @@ impl Default for BiconvexLens {
         Self::new()
     }
 }
+impl NodeDataMeta for BiconvexLens {
+    fn name(&self) -> &'static str {
+        "Biconvex Lens"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Primitive
+    }
+}
 
 // Combinators
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Union {
     pub factor: f32,
-    pub children: Vec<NodeId>,
 }
 impl Union {
     pub const fn new() -> Union {
-        Union {
-            factor: 0.0,
-            children: vec![],
-        }
+        Union { factor: 0.0 }
     }
 }
 impl Default for Union {
@@ -225,18 +310,25 @@ impl Default for Union {
         Self::new()
     }
 }
+impl NodeDataMeta for Union {
+    fn name(&self) -> &'static str {
+        "Union"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Operation
+    }
+    fn can_have_children(&self) -> bool {
+        true
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Intersect {
     pub factor: f32,
-    pub children: (Option<NodeId>, Option<NodeId>),
 }
 impl Intersect {
     pub const fn new() -> Intersect {
-        Intersect {
-            factor: 0.0,
-            children: (None, None),
-        }
+        Intersect { factor: 0.0 }
     }
 }
 impl Default for Intersect {
@@ -244,18 +336,25 @@ impl Default for Intersect {
         Self::new()
     }
 }
+impl NodeDataMeta for Intersect {
+    fn name(&self) -> &'static str {
+        "Intersect"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Operation
+    }
+    fn can_have_children(&self) -> bool {
+        true
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Subtract {
     pub factor: f32,
-    pub children: Vec<NodeId>,
 }
 impl Subtract {
     pub const fn new() -> Subtract {
-        Subtract {
-            factor: 0.0,
-            children: vec![],
-        }
+        Subtract { factor: 0.0 }
     }
 }
 impl Default for Subtract {
@@ -263,9 +362,19 @@ impl Default for Subtract {
         Self::new()
     }
 }
+impl NodeDataMeta for Subtract {
+    fn name(&self) -> &'static str {
+        "Subtract"
+    }
+    fn category(&self) -> NodeCategory {
+        NodeCategory::Operation
+    }
+    fn can_have_children(&self) -> bool {
+        true
+    }
+}
 
 // TODO: consider using a macro to generate the NodeData enum members
-// TODO: consider moving name/category to static methods on the structs, or using a trait
 // TODO: consider generating delta structs for each NodeData type using a macro
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NodeData {
@@ -285,171 +394,33 @@ pub enum NodeData {
     Subtract(Subtract),
 }
 impl NodeData {
-    pub const fn name(&self) -> &str {
+    fn as_node_data_meta(&self) -> &dyn NodeDataMeta {
         match self {
-            NodeData::Sphere(_) => "Sphere",
-            NodeData::Cylinder(_) => "Cylinder",
-            NodeData::Torus(_) => "Torus",
-            NodeData::Plane(_) => "Plane",
-            NodeData::Capsule(_) => "Capsule",
-            NodeData::TaperedCapsule(_) => "Tapered Capsule",
-            NodeData::Cone(_) => "Cone",
-            NodeData::Box(_) => "Box",
-            NodeData::TorusSector(_) => "Torus Sector",
-            NodeData::BiconvexLens(_) => "Biconvex Lens",
-
-            NodeData::Union(_) => "Union",
-            NodeData::Intersect(_) => "Intersect",
-            NodeData::Subtract(_) => "Subtract",
+            NodeData::Sphere(d) => d as &dyn NodeDataMeta,
+            NodeData::Cylinder(d) => d as &dyn NodeDataMeta,
+            NodeData::Torus(d) => d as &dyn NodeDataMeta,
+            NodeData::Plane(d) => d as &dyn NodeDataMeta,
+            NodeData::Capsule(d) => d as &dyn NodeDataMeta,
+            NodeData::TaperedCapsule(d) => d as &dyn NodeDataMeta,
+            NodeData::Cone(d) => d as &dyn NodeDataMeta,
+            NodeData::Box(d) => d as &dyn NodeDataMeta,
+            NodeData::TorusSector(d) => d as &dyn NodeDataMeta,
+            NodeData::BiconvexLens(d) => d as &dyn NodeDataMeta,
+            NodeData::Union(d) => d as &dyn NodeDataMeta,
+            NodeData::Intersect(d) => d as &dyn NodeDataMeta,
+            NodeData::Subtract(d) => d as &dyn NodeDataMeta,
         }
     }
-
-    pub const fn category(&self) -> NodeCategory {
-        match self {
-            NodeData::Sphere(_) => NodeCategory::Primitive,
-            NodeData::Cylinder(_) => NodeCategory::Primitive,
-            NodeData::Torus(_) => NodeCategory::Primitive,
-            NodeData::Plane(_) => NodeCategory::Primitive,
-            NodeData::Capsule(_) => NodeCategory::Primitive,
-            NodeData::TaperedCapsule(_) => NodeCategory::Primitive,
-            NodeData::Cone(_) => NodeCategory::Primitive,
-            NodeData::Box(_) => NodeCategory::Primitive,
-            NodeData::TorusSector(_) => NodeCategory::Primitive,
-            NodeData::BiconvexLens(_) => NodeCategory::Primitive,
-
-            NodeData::Union(_) => NodeCategory::Operation,
-            NodeData::Intersect(_) => NodeCategory::Operation,
-            NodeData::Subtract(_) => NodeCategory::Operation,
-        }
+}
+impl NodeDataMeta for NodeData {
+    fn name(&self) -> &'static str {
+        self.as_node_data_meta().name()
     }
-
-    pub(crate) fn add_child(&mut self, index: Option<usize>, child_id: NodeId) {
-        fn add_to_vec(children: &mut Vec<NodeId>, index: Option<usize>, child_id: NodeId) {
-            match index {
-                Some(index) => *children.get_mut(index).unwrap() = child_id,
-                None => children.push(child_id),
-            }
-        }
-
-        fn add_to_lhs_rhs(
-            children: &mut (Option<NodeId>, Option<NodeId>),
-            index: Option<usize>,
-            child_id: NodeId,
-        ) {
-            match index {
-                Some(0) => children.0 = Some(child_id),
-                Some(1) => children.1 = Some(child_id),
-                Some(_) => panic!("out of bounds index"),
-                None => match children {
-                    (None, _) => children.0 = Some(child_id),
-                    (_, None) => children.1 = Some(child_id),
-                    (Some(_), Some(_)) => {
-                        panic!("tried to add a new child, but both slots were full")
-                    }
-                },
-            }
-        }
-
-        match self {
-            NodeData::Sphere(_) => panic!("this node does not support children"),
-            NodeData::Cylinder(_) => panic!("this node does not support children"),
-            NodeData::Torus(_) => panic!("this node does not support children"),
-            NodeData::Plane(_) => panic!("this node does not support children"),
-            NodeData::Capsule(_) => panic!("this node does not support children"),
-            NodeData::TaperedCapsule(_) => panic!("this node does not support children"),
-            NodeData::Cone(_) => panic!("this node does not support children"),
-            NodeData::Box(_) => panic!("this node does not support children"),
-            NodeData::TorusSector(_) => panic!("this node does not support children"),
-            NodeData::BiconvexLens(_) => panic!("this node does not support children"),
-
-            NodeData::Union(Union { children, .. }) => add_to_vec(children, index, child_id),
-            NodeData::Intersect(Intersect { children, .. }) => {
-                add_to_lhs_rhs(children, index, child_id)
-            }
-            NodeData::Subtract(Subtract { children, .. }) => add_to_vec(children, index, child_id),
-        }
+    fn category(&self) -> NodeCategory {
+        self.as_node_data_meta().category()
     }
-
-    pub(crate) fn remove_child(&mut self, child_id: NodeId) {
-        fn remove_from_vec(children: &mut Vec<NodeId>, child_id: NodeId) {
-            children.retain(|id| *id != child_id);
-        }
-
-        fn remove_from_lhs_rhs(children: &mut (Option<NodeId>, Option<NodeId>), child_id: NodeId) {
-            if children.0 == Some(child_id) {
-                children.0 = None;
-            }
-
-            if children.1 == Some(child_id) {
-                children.1 = None;
-            }
-        }
-
-        match self {
-            NodeData::Sphere(_) => panic!("this node does not support children"),
-            NodeData::Cylinder(_) => panic!("this node does not support children"),
-            NodeData::Torus(_) => panic!("this node does not support children"),
-            NodeData::Plane(_) => panic!("this node does not support children"),
-            NodeData::Capsule(_) => panic!("this node does not support children"),
-            NodeData::TaperedCapsule(_) => panic!("this node does not support children"),
-            NodeData::Cone(_) => panic!("this node does not support children"),
-            NodeData::Box(_) => panic!("this node does not support children"),
-            NodeData::TorusSector(_) => panic!("this node does not support children"),
-            NodeData::BiconvexLens(_) => panic!("this node does not support children"),
-
-            NodeData::Union(Union { children, .. }) => remove_from_vec(children, child_id),
-            NodeData::Intersect(Intersect { children, .. }) => {
-                remove_from_lhs_rhs(children, child_id)
-            }
-            NodeData::Subtract(Subtract { children, .. }) => remove_from_vec(children, child_id),
-        }
-    }
-
-    pub(crate) fn replace_child(&mut self, old_child_id: NodeId, new_child_id: NodeId) {
-        fn replace_in_vec(children: &mut Vec<NodeId>, old_child_id: NodeId, new_child_id: NodeId) {
-            for child_id in children {
-                if *child_id == old_child_id {
-                    *child_id = new_child_id;
-                }
-            }
-        }
-
-        fn replace_in_lhs_rhs(
-            children: &mut (Option<NodeId>, Option<NodeId>),
-            old_child_id: NodeId,
-            new_child_id: NodeId,
-        ) {
-            if children.0 == Some(old_child_id) {
-                children.0 = Some(new_child_id);
-            }
-
-            if children.1 == Some(old_child_id) {
-                children.1 = Some(new_child_id);
-            }
-        }
-
-        match self {
-            NodeData::Sphere(_) => panic!("this node does not support children"),
-            NodeData::Cylinder(_) => panic!("this node does not support children"),
-            NodeData::Torus(_) => panic!("this node does not support children"),
-            NodeData::Plane(_) => panic!("this node does not support children"),
-            NodeData::Capsule(_) => panic!("this node does not support children"),
-            NodeData::TaperedCapsule(_) => panic!("this node does not support children"),
-            NodeData::Cone(_) => panic!("this node does not support children"),
-            NodeData::Box(_) => panic!("this node does not support children"),
-            NodeData::TorusSector(_) => panic!("this node does not support children"),
-            NodeData::BiconvexLens(_) => panic!("this node does not support children"),
-
-            NodeData::Union(Union { children, .. }) => {
-                replace_in_vec(children, old_child_id, new_child_id)
-            }
-            NodeData::Intersect(Intersect { children, .. }) => {
-                replace_in_lhs_rhs(children, old_child_id, new_child_id)
-            }
-            NodeData::Subtract(Subtract { children, .. }) => {
-                replace_in_vec(children, old_child_id, new_child_id)
-            }
-        }
+    fn can_have_children(&self) -> bool {
+        self.as_node_data_meta().can_have_children()
     }
 }
 

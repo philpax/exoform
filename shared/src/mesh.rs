@@ -34,7 +34,7 @@ fn node_to_saft_node(
     node: NodeId,
 ) -> Option<saft::NodeId> {
     let node = graph.get(node).unwrap();
-    let mut node_id = node_to_saft_node_data(saft_graph, graph, &node.data)?;
+    let mut node_id = node_to_saft_node_data(saft_graph, graph, &node.data, &node.children)?;
     let transform = &node.transform;
     if transform.scale != 1.0 {
         node_id = saft_graph.op_scale(node_id, transform.scale);
@@ -59,6 +59,7 @@ fn node_to_saft_node_data(
     saft_graph: &mut saft::Graph,
     graph: &Graph,
     node_data: &NodeData,
+    children: &[Option<NodeId>],
 ) -> Option<saft::NodeId> {
     match node_data {
         NodeData::Sphere(Sphere { radius }) => Some(saft_graph.sphere(glam::Vec3::ZERO, *radius)),
@@ -92,89 +93,73 @@ fn node_to_saft_node_data(
             chord,
         }) => Some(saft_graph.biconvex_lens(*lower_sagitta, *upper_sagitta, *chord)),
 
-        NodeData::Union(Union {
-            factor: size,
-            children: nodes,
-        }) => {
-            let nodes: Vec<_> = nodes_to_saft_nodes(saft_graph, graph, nodes.as_slice());
-            if nodes.is_empty() {
-                return None;
-            }
-            if nodes.len() == 2 {
-                let (lhs, rhs) = (nodes[0], nodes[1]);
-                if *size == 0.0 {
-                    Some(saft_graph.op_union(lhs, rhs))
-                } else {
-                    Some(saft_graph.op_union_smooth(lhs, rhs, *size))
-                }
-            } else if *size == 0.0 {
-                Some(saft_graph.op_union_multi(nodes))
-            } else {
-                Some(saft_graph.op_union_multi_smooth(nodes, *size))
-            }
-        }
-        NodeData::Intersect(Intersect {
-            factor: size,
-            children: nodes,
-        }) => match lhs_rhs_to_saft_nodes(saft_graph, graph, nodes) {
-            (Some(lhs), Some(rhs)) => {
-                if *size == 0.0 {
-                    Some(saft_graph.op_intersect(lhs, rhs))
-                } else {
-                    Some(saft_graph.op_intersect_smooth(lhs, rhs, *size))
-                }
-            }
-            (Some(lhs), None) => Some(lhs),
-            _ => None,
-        },
-        NodeData::Subtract(Subtract {
-            factor: size,
-            children: nodes,
-        }) => {
-            let nodes: Vec<_> = nodes_to_saft_nodes(saft_graph, graph, nodes.as_slice());
+        NodeData::Union(Union { factor }) => {
+            let nodes = nodes_to_saft_nodes(saft_graph, graph, children);
+            let is_unsmoothed = *factor == 0.0;
             if nodes.is_empty() {
                 None
-            } else if nodes.len() == 1 {
-                Some(nodes[0])
-            } else {
-                let mut new_node_id = nodes[0];
-                for rhs in &nodes[1..] {
-                    if *size == 0.0 {
-                        new_node_id = saft_graph.op_subtract(new_node_id, *rhs);
-                    } else {
-                        new_node_id = saft_graph.op_subtract_smooth(new_node_id, *rhs, *size);
-                    }
+            } else if nodes.len() == 2 {
+                let (lhs, rhs) = (nodes[0], nodes[1]);
+                if is_unsmoothed {
+                    Some(saft_graph.op_union(lhs, rhs))
+                } else {
+                    Some(saft_graph.op_union_smooth(lhs, rhs, *factor))
                 }
-                Some(new_node_id)
+            } else if is_unsmoothed {
+                Some(saft_graph.op_union_multi(nodes))
+            } else {
+                Some(saft_graph.op_union_multi_smooth(nodes, *factor))
             }
         }
+        NodeData::Intersect(Intersect { factor }) => {
+            let nodes = nodes_to_saft_nodes(saft_graph, graph, children);
+            apply_infix_operation_over_array(&nodes, |lhs, rhs| {
+                if *factor == 0.0 {
+                    saft_graph.op_intersect(lhs, rhs)
+                } else {
+                    saft_graph.op_intersect_smooth(lhs, rhs, *factor)
+                }
+            })
+        }
+        NodeData::Subtract(Subtract { factor }) => {
+            let nodes = nodes_to_saft_nodes(saft_graph, graph, children);
+            apply_infix_operation_over_array(&nodes, |lhs, rhs| {
+                if *factor == 0.0 {
+                    saft_graph.op_subtract(lhs, rhs)
+                } else {
+                    saft_graph.op_subtract_smooth(lhs, rhs, *factor)
+                }
+            })
+        }
+    }
+}
+
+fn apply_infix_operation_over_array(
+    nodes: &[saft::NodeId],
+    mut operation: impl FnMut(saft::NodeId, saft::NodeId) -> saft::NodeId,
+) -> Option<saft::NodeId> {
+    if nodes.is_empty() {
+        None
+    } else if nodes.len() == 1 {
+        Some(nodes[0])
+    } else {
+        let mut new_node_id = nodes[0];
+        for rhs in &nodes[1..] {
+            new_node_id = operation(new_node_id, *rhs);
+        }
+        Some(new_node_id)
     }
 }
 
 fn nodes_to_saft_nodes(
     saft_graph: &mut saft::Graph,
     graph: &Graph,
-    nodes: &[NodeId],
+    nodes: &[Option<NodeId>],
 ) -> Vec<saft::NodeId> {
     nodes
         .iter()
-        .filter_map(|id| node_to_saft_node(saft_graph, graph, *id))
+        .filter_map(|id| node_to_saft_node(saft_graph, graph, (*id)?))
         .collect()
-}
-
-fn lhs_rhs_to_saft_nodes(
-    saft_graph: &mut saft::Graph,
-    graph: &Graph,
-    nodes: &(Option<NodeId>, Option<NodeId>),
-) -> (Option<saft::NodeId>, Option<saft::NodeId>) {
-    (
-        nodes
-            .0
-            .and_then(|node| node_to_saft_node(saft_graph, graph, node)),
-        nodes
-            .1
-            .and_then(|node| node_to_saft_node(saft_graph, graph, node)),
-    )
 }
 
 fn saft_graph_translate(
