@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashMap};
 
 struct CurrentEntity(Option<Entity>);
 struct RebuildTimer(Timer);
@@ -36,7 +36,7 @@ fn rebuild_mesh(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut current_entity: ResMut<CurrentEntity>,
     graph: Res<shared::Graph>,
-    // query: Query<(Entity, &Transform, &GeneratedMesh)>,
+    query: Query<(Entity, &Transform, &GeneratedMesh)>,
 ) {
     create_mesh(
         &mut commands,
@@ -48,8 +48,34 @@ fn rebuild_mesh(
 
     let mut reachable_nodes = HashSet::new();
     graph.find_all_reachable_nodes(graph.root_node_id, &mut reachable_nodes);
-    // add the nodes that are in the reachable nodes and not present in the Bevy set
-    // remove the nodes that are in the Bevy set, but not in the reachable nodes
+
+    let bevy_nodes: Vec<_> = query.iter().collect();
+    let reachable_bevy_nodes: HashSet<_> = bevy_nodes.iter().map(|(_, _, gm)| gm.0).collect();
+    let bevy_entity_by_node_id: HashMap<_, _> = bevy_nodes
+        .iter()
+        .map(|(entity, _, gm)| (gm.0, *entity))
+        .collect();
+
+    for &node_id in reachable_nodes.difference(&reachable_bevy_nodes) {
+        node_to_generated_mesh(&mut commands, &mut meshes, &mut materials, &graph, node_id);
+    }
+
+    for node_id in reachable_bevy_nodes.difference(&reachable_nodes) {
+        commands
+            .entity(*bevy_entity_by_node_id.get(node_id).unwrap())
+            .despawn();
+    }
+
+    let bevy_nodes: Vec<_> = query.iter().collect();
+
+    let bevy_entity_by_node_id: HashMap<_, _> = bevy_nodes
+        .iter()
+        .map(|(entity, _, gm)| (gm.0, *entity))
+        .collect();
+    for (&entity, _, _) in &bevy_nodes {
+        commands.entity(entity).insert(Parent())
+    }
+
     // ensure the parenting relationship is correct for each Bevy node
     // move the Bevy set to their transforms in the graph
     // every 50ms, send an update to synchronise the graph with the transforms from the Bevy nodes
@@ -129,14 +155,12 @@ fn shared_transform_to_bevy_transform(t: shared::Transform) -> Transform {
 }
 
 fn node_to_generated_mesh(
-    commands: &mut ChildBuilder,
+    commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     graph: &shared::Graph,
     node_id: shared::NodeId,
 ) {
-    use shared::{Intersect, NodeData, Subtract, Union};
-
     let node = graph.get(node_id).unwrap();
     let (r, g, b) = node.rgb;
 
@@ -152,39 +176,5 @@ fn node_to_generated_mesh(
         })
         .insert_bundle(bevy_mod_picking::PickableBundle::default())
         .insert(bevy_transform_gizmo::GizmoTransformable)
-        .insert(GeneratedMesh(node_id))
-        .with_children(|child_commands| match &node.data {
-            NodeData::Sphere(_) => {}
-            NodeData::Cylinder(_) => {}
-            NodeData::Torus(_) => {}
-            NodeData::Plane(_) => {}
-            NodeData::Capsule(_) => {}
-            NodeData::TaperedCapsule(_) => {}
-            NodeData::Cone(_) => {}
-            NodeData::Box(_) => {}
-            NodeData::TorusSector(_) => {}
-            NodeData::BiconvexLens(_) => {}
-
-            NodeData::Union(Union { children, .. }) => {
-                for child_id in children {
-                    node_to_generated_mesh(child_commands, meshes, materials, graph, *child_id);
-                }
-            }
-            NodeData::Intersect(Intersect {
-                children: (lhs, rhs),
-                ..
-            }) => {
-                if let Some(lhs) = lhs {
-                    node_to_generated_mesh(child_commands, meshes, materials, graph, *lhs);
-                }
-                if let Some(rhs) = rhs {
-                    node_to_generated_mesh(child_commands, meshes, materials, graph, *rhs);
-                }
-            }
-            NodeData::Subtract(Subtract { children, .. }) => {
-                for child_id in children {
-                    node_to_generated_mesh(child_commands, meshes, materials, graph, *child_id);
-                }
-            }
-        });
+        .insert(GeneratedMesh(node_id));
 }
