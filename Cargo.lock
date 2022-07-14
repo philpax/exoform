@@ -1418,6 +1418,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3524,6 +3533,7 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "derive-macros",
  "glam",
  "saft",
  "serde",

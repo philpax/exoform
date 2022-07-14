@@ -1,3 +1,4 @@
+use derive_macros::node_type;
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
@@ -6,372 +7,120 @@ use crate::NodeCategory;
 pub trait NodeDataMeta {
     fn name(&self) -> &'static str;
     fn category(&self) -> NodeCategory;
-
-    fn can_have_children(&self) -> bool {
-        false
-    }
+    fn can_have_children(&self) -> bool;
 }
 
 // Primitives
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Sphere", category = NodeCategory::Primitive)]
 pub struct Sphere {
-    pub radius: f32,
-}
-impl Sphere {
-    pub const fn new() -> Sphere {
-        Sphere { radius: 1.0 }
-    }
-}
-impl Default for Sphere {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Sphere {
-    fn name(&self) -> &'static str {
-        "Sphere"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
+    #[field(name = "Radius", default = 1.0)]
+    radius: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Cylinder", category = NodeCategory::Primitive)]
 pub struct Cylinder {
-    pub cylinder_radius: f32,
-    pub half_height: f32,
-    pub rounding_radius: f32,
-}
-impl Cylinder {
-    pub const fn new() -> Cylinder {
-        Cylinder {
-            cylinder_radius: 1.0,
-            half_height: 1.0,
-            rounding_radius: 0.0,
-        }
-    }
-}
-impl Default for Cylinder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Cylinder {
-    fn name(&self) -> &'static str {
-        "Cylinder"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
+    #[field(name = "Cylinder radius", default = 1.0)]
+    cylinder_radius: f32,
+    #[field(name = "Half-height", default = 1.0)]
+    half_height: f32,
+    #[field(name = "Rounding radius", default = 0.0)]
+    rounding_radius: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Torus", category = NodeCategory::Primitive)]
 pub struct Torus {
-    pub big_r: f32,
-    pub small_r: f32,
-}
-impl Torus {
-    pub const fn new() -> Torus {
-        Torus {
-            big_r: 1.0,
-            small_r: 0.1,
-        }
-    }
-}
-impl Default for Torus {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Torus {
-    fn name(&self) -> &'static str {
-        "Torus"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
+    #[field(name = "Big radius", default = 1.0)]
+    big_r: f32,
+    #[field(name = "Small radius", default = 0.1)]
+    small_r: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Plane", category = NodeCategory::Primitive)]
 pub struct Plane {
     // *Must* be normalised!
+    #[field(name = "Normal", default = glam::const_vec3!([0.0, 1.0, 0.0]))]
     pub normal: Vec3,
+    #[field(name = "Distance from origin", default = 0.0)]
     pub distance_from_origin: f32,
 }
-impl Plane {
-    pub const fn new() -> Plane {
-        let normal = glam::const_vec3!([0.0, 1.0, 0.0]);
-        Plane {
-            normal,
-            distance_from_origin: 0.0,
-        }
-    }
-}
-impl Default for Plane {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Plane {
-    fn name(&self) -> &'static str {
-        "Plane"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Capsule", category = NodeCategory::Primitive)]
 pub struct Capsule {
+    #[field(name = "Points", default = [
+        glam::const_vec3!([0.0, 0.0, 0.0]),
+        glam::const_vec3!([0.0, 1.0, 0.0]),
+    ])]
     pub points: [Vec3; 2],
+    #[field(name = "Radius", default = 1.0)]
     pub radius: f32,
 }
-impl Capsule {
-    pub const fn new() -> Capsule {
-        Capsule {
-            points: [
-                glam::const_vec3!([0.0, 0.0, 0.0]),
-                glam::const_vec3!([0.0, 1.0, 0.0]),
-            ],
-            radius: 1.0,
-        }
-    }
-}
-impl Default for Capsule {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Capsule {
-    fn name(&self) -> &'static str {
-        "Capsule"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Tapered Capsule", category = NodeCategory::Primitive)]
 pub struct TaperedCapsule {
+    #[field(name = "Points", default = [
+        glam::const_vec3!([0.0, 0.0, 0.0]),
+        glam::const_vec3!([0.0, 1.0, 0.0]),
+    ])]
     pub points: [Vec3; 2],
+    #[field(name = "Radius", default = [1.0, 1.0])]
     pub radii: [f32; 2],
 }
-impl TaperedCapsule {
-    pub const fn new() -> TaperedCapsule {
-        TaperedCapsule {
-            points: [
-                glam::const_vec3!([0.0, 0.0, 0.0]),
-                glam::const_vec3!([0.0, 1.0, 0.0]),
-            ],
-            radii: [1.0, 1.0],
-        }
-    }
-}
-impl Default for TaperedCapsule {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for TaperedCapsule {
-    fn name(&self) -> &'static str {
-        "Tapered Capsule"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Cone", category = NodeCategory::Primitive)]
 pub struct Cone {
+    #[field(name = "Radius", default = 1.0)]
     pub radius: f32,
+    #[field(name = "Height", default = 1.0)]
     pub height: f32,
 }
-impl Cone {
-    pub const fn new() -> Cone {
-        Cone {
-            radius: 1.0,
-            height: 1.0,
-        }
-    }
-}
-impl Default for Cone {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Cone {
-    fn name(&self) -> &'static str {
-        "Cone"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Box", category = NodeCategory::Primitive)]
 pub struct Box {
+    #[field(name = "Half-size", default = glam::const_vec3!([0.5, 0.5, 0.5]))]
     pub half_size: Vec3,
+    #[field(name = "Rounding radius", default = 0.0)]
     pub rounding_radius: f32,
 }
-impl Box {
-    pub const fn new() -> Box {
-        Box {
-            half_size: glam::const_vec3!([0.5, 0.5, 0.5]),
-            rounding_radius: 0.0,
-        }
-    }
-}
-impl Default for Box {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Box {
-    fn name(&self) -> &'static str {
-        "Box"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Torus Sector", category = NodeCategory::Primitive)]
 pub struct TorusSector {
+    #[field(name = "Big radius", default = 1.0)]
     pub big_r: f32,
+    #[field(name = "Small radius", default = 0.1)]
     pub small_r: f32,
+    #[field(name = "Angle", default = std::f32::consts::PI)]
     pub angle: f32,
 }
-impl TorusSector {
-    pub const fn new() -> TorusSector {
-        TorusSector {
-            big_r: 1.0,
-            small_r: 0.1,
-            angle: std::f32::consts::PI,
-        }
-    }
-}
-impl Default for TorusSector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for TorusSector {
-    fn name(&self) -> &'static str {
-        "Torus Sector"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Biconvex Lens", category = NodeCategory::Primitive)]
 pub struct BiconvexLens {
+    #[field(name = "Lower sagitta", default = 0.5)]
     pub lower_sagitta: f32,
+    #[field(name = "Upper sagitta", default = 0.5)]
     pub upper_sagitta: f32,
+    #[field(name = "Chord", default = 0.5)]
     pub chord: f32,
 }
-impl BiconvexLens {
-    pub const fn new() -> BiconvexLens {
-        BiconvexLens {
-            lower_sagitta: 0.5,
-            upper_sagitta: 0.5,
-            chord: 0.5,
-        }
-    }
-}
-impl Default for BiconvexLens {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for BiconvexLens {
-    fn name(&self) -> &'static str {
-        "Biconvex Lens"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Primitive
-    }
-}
 
-// Combinators
+// Operations
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Union", category = NodeCategory::Operation, children = true)]
 pub struct Union {
+    #[field(name = "Factor", default = 0.0)]
     pub factor: f32,
 }
-impl Union {
-    pub const fn new() -> Union {
-        Union { factor: 0.0 }
-    }
-}
-impl Default for Union {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Union {
-    fn name(&self) -> &'static str {
-        "Union"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Operation
-    }
-    fn can_have_children(&self) -> bool {
-        true
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Intersect", category = NodeCategory::Operation, children = true)]
 pub struct Intersect {
+    #[field(name = "Factor", default = 0.0)]
     pub factor: f32,
-}
-impl Intersect {
-    pub const fn new() -> Intersect {
-        Intersect { factor: 0.0 }
-    }
-}
-impl Default for Intersect {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Intersect {
-    fn name(&self) -> &'static str {
-        "Intersect"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Operation
-    }
-    fn can_have_children(&self) -> bool {
-        true
-    }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[node_type(name = "Subtract", category = NodeCategory::Operation, children = true)]
 pub struct Subtract {
+    #[field(name = "Factor", default = 0.0)]
     pub factor: f32,
-}
-impl Subtract {
-    pub const fn new() -> Subtract {
-        Subtract { factor: 0.0 }
-    }
-}
-impl Default for Subtract {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl NodeDataMeta for Subtract {
-    fn name(&self) -> &'static str {
-        "Subtract"
-    }
-    fn category(&self) -> NodeCategory {
-        NodeCategory::Operation
-    }
-    fn can_have_children(&self) -> bool {
-        true
-    }
 }
 
 // TODO: consider using a macro to generate the NodeData enum members
