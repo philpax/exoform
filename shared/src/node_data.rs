@@ -123,70 +123,50 @@ pub struct Subtract {
     pub factor: f32,
 }
 
-// TODO: consider using a macro to generate the NodeData enum members
 // TODO: consider generating delta structs for each NodeData type using a macro
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum NodeData {
-    Sphere(Sphere),
-    Cylinder(Cylinder),
-    Torus(Torus),
-    Plane(Plane),
-    Capsule(Capsule),
-    TaperedCapsule(TaperedCapsule),
-    Cone(Cone),
-    Box(Box),
-    TorusSector(TorusSector),
-    BiconvexLens(BiconvexLens),
 
-    Union(Union),
-    Intersect(Intersect),
-    Subtract(Subtract),
-}
-impl NodeData {
-    fn as_node_data_meta(&self) -> &dyn NodeDataMeta {
-        match self {
-            NodeData::Sphere(d) => d as &dyn NodeDataMeta,
-            NodeData::Cylinder(d) => d as &dyn NodeDataMeta,
-            NodeData::Torus(d) => d as &dyn NodeDataMeta,
-            NodeData::Plane(d) => d as &dyn NodeDataMeta,
-            NodeData::Capsule(d) => d as &dyn NodeDataMeta,
-            NodeData::TaperedCapsule(d) => d as &dyn NodeDataMeta,
-            NodeData::Cone(d) => d as &dyn NodeDataMeta,
-            NodeData::Box(d) => d as &dyn NodeDataMeta,
-            NodeData::TorusSector(d) => d as &dyn NodeDataMeta,
-            NodeData::BiconvexLens(d) => d as &dyn NodeDataMeta,
-            NodeData::Union(d) => d as &dyn NodeDataMeta,
-            NodeData::Intersect(d) => d as &dyn NodeDataMeta,
-            NodeData::Subtract(d) => d as &dyn NodeDataMeta,
+macro_rules! generate_node_data {
+    ($($i:ident),*) => {
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub enum NodeData {
+            $($i($i)),*
         }
-    }
-}
-impl NodeDataMeta for NodeData {
-    fn name(&self) -> &'static str {
-        self.as_node_data_meta().name()
-    }
-    fn category(&self) -> NodeCategory {
-        self.as_node_data_meta().category()
-    }
-    fn can_have_children(&self) -> bool {
-        self.as_node_data_meta().can_have_children()
+        impl NodeDataMeta for NodeData {
+            fn name(&self) -> &'static str {
+                self.as_node_data_meta().name()
+            }
+            fn category(&self) -> NodeCategory {
+                self.as_node_data_meta().category()
+            }
+            fn can_have_children(&self) -> bool {
+                self.as_node_data_meta().can_have_children()
+            }
+        }
+        impl NodeData {
+            fn as_node_data_meta(&self) -> &dyn NodeDataMeta {
+                match self {
+                    $(NodeData::$i(d) => d as &dyn NodeDataMeta),*
+                }
+            }
+        }
+        pub const NODE_DATA_DEFAULTS: &[NodeData] = &[
+            $(NodeData::$i(self::$i::new())),*
+        ];
     }
 }
 
-pub const NODE_DATA_DEFAULTS: &[NodeData] = &[
-    // primitives
-    NodeData::Sphere(Sphere::new()),
-    NodeData::Cylinder(Cylinder::new()),
-    NodeData::Torus(Torus::new()),
-    NodeData::Plane(Plane::new()),
-    NodeData::Capsule(Capsule::new()),
-    NodeData::TaperedCapsule(TaperedCapsule::new()),
-    NodeData::Cone(Cone::new()),
-    NodeData::Box(Box::new()),
-    NodeData::TorusSector(TorusSector::new()),
-    NodeData::BiconvexLens(BiconvexLens::new()),
-    // operations
-    NodeData::Union(Union::new()),
-    NodeData::Intersect(Intersect::new()),
-    NodeData::Subtract(Subtract::new()),
-];
+generate_node_data!(
+    Sphere,
+    Cylinder,
+    Torus,
+    Plane,
+    Capsule,
+    TaperedCapsule,
+    Cone,
+    Box,
+    TorusSector,
+    BiconvexLens,
+    Union,
+    Intersect,
+    Subtract
+);
