@@ -78,19 +78,6 @@ pub fn factor_slider(ui: &mut egui::Ui, value: f32, default_value: f32) -> Optio
     })
 }
 
-pub fn factor_grid(
-    ui: &mut egui::Ui,
-    events: &mut Vec<GraphEvent>,
-    node: &Node,
-    value: f32,
-    default_value: f32,
-) -> Option<f32> {
-    grid(ui, |ui| {
-        events.extend(render_node_prelude_with_events(ui, node));
-        factor_slider(ui, value, default_value)
-    })
-}
-
 pub fn angle(ui: &mut egui::Ui, value: Quat, default_value: Quat) -> Option<Quat> {
     with_reset_button(ui, value, default_value, |ui, value| {
         let (mut yaw, mut pitch, mut roll) = value.to_euler(glam::EulerRot::YXZ);
