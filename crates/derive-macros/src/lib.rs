@@ -83,6 +83,17 @@ pub fn node_type(
         })
         .map(|(ident, init)| quote! { #ident: #init });
 
+    let item_diff_name = quote::format_ident!("{}Diff", item_name);
+    let struct_diff_fields = fields
+        .iter()
+        .map(|(ident, ty, _)| quote! { pub #ident: Option<#ty> });
+    let change_field_checks = fields
+        .iter()
+        .map(|(ident, _, _)| quote! { self.#ident.is_some() });
+    let apply_stmts = fields
+        .iter()
+        .map(|(ident, _, _)| quote! { self.#ident = diff.#ident.unwrap_or(self.#ident) });
+
     let ts = quote! {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         pub struct #item_name {
@@ -109,6 +120,20 @@ pub fn node_type(
             }
             fn can_have_children(&self) -> bool {
                 #children
+            }
+        }
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct #item_diff_name {
+            #(#struct_diff_fields),*
+        }
+        impl #item_diff_name {
+            pub fn has_changes(&self) -> bool {
+                #(#change_field_checks)||*
+            }
+        }
+        impl #item_name {
+            pub fn apply(&mut self, diff: #item_diff_name) {
+                #(#apply_stmts);*;
             }
         }
     };

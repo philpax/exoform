@@ -38,7 +38,7 @@ pub enum GraphEvent {
     RemoveChild(NodeId, NodeId),
     AddNewParent(NodeId, NodeId, NodeData),
 
-    ReplaceData(NodeId, NodeData),
+    ApplyDiff(NodeId, NodeDataDiff),
 
     SetColour(NodeId, (f32, f32, f32)),
     SetTranslation(NodeId, Vec3),
@@ -149,7 +149,9 @@ impl Graph {
                 parent.replace_child(*child_id, new_parent_id);
             }
 
-            GraphEvent::ReplaceData(node_id, data) => self.get_mut(*node_id)?.data = data.clone(),
+            GraphEvent::ApplyDiff(node_id, diff) => {
+                self.get_mut(*node_id)?.data.apply(diff.clone())
+            }
 
             GraphEvent::SetColour(node_id, rgb) => {
                 self.get_mut(*node_id)?.rgb = *rgb;

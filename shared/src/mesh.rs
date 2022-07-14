@@ -73,10 +73,17 @@ fn node_to_saft_node_data(
             normal,
             distance_from_origin,
         }) => Some(saft_graph.plane((*normal, *distance_from_origin).into())),
-        NodeData::Capsule(Capsule { points, radius }) => Some(saft_graph.capsule(*points, *radius)),
-        NodeData::TaperedCapsule(TaperedCapsule { points, radii }) => {
-            Some(saft_graph.tapered_capsule(*points, *radii))
-        }
+        NodeData::Capsule(Capsule {
+            point_1,
+            point_2,
+            radius,
+        }) => Some(saft_graph.capsule([*point_1, *point_2], *radius)),
+        NodeData::TaperedCapsule(TaperedCapsule {
+            point_1,
+            point_2,
+            radius_1,
+            radius_2,
+        }) => Some(saft_graph.tapered_capsule([*point_1, *point_2], [*radius_1, *radius_2])),
         NodeData::Cone(Cone { radius, height }) => Some(saft_graph.cone(*radius, *height)),
         NodeData::Box(Box {
             half_size,
