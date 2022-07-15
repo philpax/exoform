@@ -81,19 +81,23 @@ fn render_selected_node(ui: &mut egui::Ui, graph: &Graph, node_id: NodeId) -> Ve
     ui.label(egui::RichText::new(node.data.name()).heading());
     util::grid(ui, |ui| {
         events.extend(util::render_node_prelude_with_events(ui, node));
-        render_selected_node_data(ui, &mut events, node);
+        if let Some(event) = render_selected_node_data(ui, node) {
+            events.push(event);
+        }
     });
 
     events
 }
 
-fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, node: &shared::Node) {
+fn render_selected_node_data(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphEvent> {
     use util::dragger_row as row;
     macro_rules! apply_diff {
         ($($diff:tt)*) => {{
             let diff = $($diff)*;
             if diff.has_changes() {
-                events.push(GraphEvent::ApplyDiff(node.id, diff.into()));
+                Some(GraphEvent::ApplyDiff(node.id, diff.into()))
+            } else {
+                None
             }
         }};
     }
@@ -103,7 +107,7 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
             let default = Sphere::default();
             apply_diff!(SphereDiff {
                 radius: row(ui, "Radius", *radius, default.radius),
-            });
+            })
         }
         NodeData::Cylinder(Cylinder {
             cylinder_radius,
@@ -125,16 +129,16 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
                     *rounding_radius,
                     default.rounding_radius,
                 ),
-            });
+            })
         }
         NodeData::Torus(Torus { big_r, small_r }) => {
             let default = Torus::default();
             apply_diff!(TorusDiff {
                 big_r: row(ui, "Big radius", *big_r, default.big_r),
                 small_r: row(ui, "Small radius", *small_r, default.small_r),
-            });
+            })
         }
-        NodeData::Plane(Plane { .. }) => {}
+        NodeData::Plane(Plane { .. }) => None,
         NodeData::Capsule(Capsule {
             point_1,
             point_2,
@@ -149,7 +153,7 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
                     util::vec3(ui, *point_2, default.point_2)
                 }),
                 radius: row(ui, "Radius", *radius, default.radius),
-            });
+            })
         }
         NodeData::TaperedCapsule(TaperedCapsule {
             point_1,
@@ -167,14 +171,14 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
                 }),
                 radius_1: row(ui, "Radius 1", *radius_1, default.radius_1),
                 radius_2: row(ui, "Radius 2", *radius_2, default.radius_2),
-            });
+            })
         }
         NodeData::Cone(Cone { radius, height }) => {
             let default = Cone::default();
             apply_diff!(ConeDiff {
                 radius: row(ui, "Radius", *radius, default.radius),
                 height: row(ui, "Height", *height, default.height),
-            });
+            })
         }
         NodeData::Box(Box {
             half_size,
@@ -191,7 +195,7 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
                     *rounding_radius,
                     default.rounding_radius,
                 ),
-            });
+            })
         }
         NodeData::TorusSector(TorusSector {
             big_r,
@@ -209,7 +213,7 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
                         changed
                     })
                 })
-            });
+            })
         }
         NodeData::BiconvexLens(BiconvexLens {
             lower_sagitta,
@@ -221,26 +225,26 @@ fn render_selected_node_data(ui: &mut egui::Ui, events: &mut Vec<GraphEvent>, no
                 lower_sagitta: row(ui, "Lower sagitta", *lower_sagitta, default.lower_sagitta),
                 upper_sagitta: row(ui, "Upper sagitta", *upper_sagitta, default.upper_sagitta),
                 chord: row(ui, "Chord", *chord, default.chord),
-            });
+            })
         }
 
         NodeData::Union(Union { factor }) => {
             let default = Union::default();
             apply_diff!(UnionDiff {
                 factor: util::factor_slider(ui, *factor, default.factor)
-            });
+            })
         }
         NodeData::Intersect(Intersect { factor }) => {
             let default = Intersect::default();
             apply_diff!(IntersectDiff {
                 factor: util::factor_slider(ui, *factor, default.factor)
-            });
+            })
         }
         NodeData::Subtract(Subtract { factor }) => {
             let default = Subtract::default();
             apply_diff!(SubtractDiff {
                 factor: util::factor_slider(ui, *factor, default.factor)
-            });
+            })
         }
     }
 }
