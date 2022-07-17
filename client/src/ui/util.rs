@@ -169,39 +169,12 @@ pub fn render_add_dropdown(
         if response.clicked() {
             ui.memory().toggle_popup(popup_id);
         }
-        let mut new_node_data = None;
         egui::popup_below_widget(ui, popup_id, &response, |ui| {
             ui.set_min_width(200.0);
-            for default in shared::NODE_DATA_DEFAULTS.iter() {
-                let category_color = match default.category() {
-                    shared::NodeCategory::Primitive => {
-                        if !include_primitives {
-                            continue;
-                        }
-                        egui::Color32::from_rgb(78, 205, 196)
-                    }
-                    shared::NodeCategory::Operation => egui::Color32::from_rgb(199, 244, 100),
-                    shared::NodeCategory::Metadata => egui::Color32::from_rgb(255, 107, 107),
-                    shared::NodeCategory::Transform => egui::Color32::from_rgb(238, 130, 238),
-                };
-                if ui
-                    .add(egui::widgets::Button::new(
-                        egui::RichText::new(default.name()).color(category_color),
-                    ))
-                    .clicked()
-                {
-                    new_node_data = Some(default.clone());
-                }
-            }
-        });
-        new_node_data
+            render_add_buttons(ui, include_primitives)
+        })?
     })
     .inner
-}
-
-pub fn render_add_parent_button(ui: &mut egui::Ui, color: egui::color::Hsva) -> Option<NodeData> {
-    let response = ui.add(coloured_button("⬆", color));
-    render_add_dropdown(ui, response, false)
 }
 
 pub fn render_add_button_max_width(
@@ -215,6 +188,31 @@ pub fn render_add_button_max_width(
     render_add_dropdown(ui, response, true)
 }
 
+fn render_add_buttons(ui: &mut egui::Ui, include_primitives: bool) -> Option<NodeData> {
+    let mut new_node_data = None;
+    for default in shared::NODE_DATA_DEFAULTS.iter() {
+        let category_color = match default.category() {
+            shared::NodeCategory::Primitive => {
+                if !include_primitives {
+                    continue;
+                }
+                egui::Color32::from_rgb(78, 205, 196)
+            }
+            shared::NodeCategory::Operation => egui::Color32::from_rgb(199, 244, 100),
+            shared::NodeCategory::Metadata => egui::Color32::from_rgb(255, 107, 107),
+            shared::NodeCategory::Transform => egui::Color32::from_rgb(238, 130, 238),
+        };
+        if ui
+            .add(egui::widgets::Button::new(
+                egui::RichText::new(default.name()).color(category_color),
+            ))
+            .clicked()
+        {
+            new_node_data = Some(default.clone());
+        }
+    }
+    new_node_data
+}
 pub fn render_egui_tree(
     ui: &mut egui::Ui,
     graph: &Graph,
@@ -270,40 +268,44 @@ fn render_header(
 ) -> Vec<GraphEvent> {
     let mut events = vec![];
 
-    if let Some(parent_node_id) = parent_node_id {
-        if ui
-            .add(coloured_button("❌", egui::Color32::LIGHT_RED.into()))
-            .clicked()
-        {
-            events.push(GraphEvent::RemoveChild(parent_node_id, node_id));
-        }
-
-        if let Some(node_data) = render_add_parent_button(ui, depth_to_color(depth - 1, true)) {
-            events.push(GraphEvent::AddNewParent(parent_node_id, node_id, node_data));
-        }
-    }
-
     let interact_size = ui.spacing().interact_size;
     let is_selected = selected_node.0 == Some(node_id);
     let name = graph.get(node_id).unwrap().data.name();
     let (bg_colour, fg_colour) = (depth_to_color(depth, is_selected), egui::Color32::WHITE);
-    if ui
-        .add_sized(
-            egui::Vec2::new(ui.available_width(), interact_size.y),
-            egui::Button::new(
-                egui::RichText::new(name)
-                    .color(fg_colour)
-                    .family(egui::FontFamily::Monospace),
-            )
-            .fill(bg_colour)
-            .sense(egui::Sense::click()),
+
+    let response = ui.add_sized(
+        egui::Vec2::new(ui.available_width(), interact_size.y),
+        egui::Button::new(
+            egui::RichText::new(name)
+                .color(fg_colour)
+                .family(egui::FontFamily::Monospace),
         )
-        .clicked()
-    {
+        .fill(bg_colour)
+        .sense(egui::Sense::click()),
+    );
+    if response.clicked_by(egui::PointerButton::Primary) {
         selected_node.0 = match selected_node.0 {
             Some(selected_node_id) if selected_node_id == node_id => None,
             _ => Some(node_id),
         };
+    }
+    if let Some(parent_node_id) = parent_node_id {
+        response.context_menu(|ui| {
+            ui.menu_button("Add Parent", |ui| {
+                if let Some(node_data) = render_add_buttons(ui, false) {
+                    events.push(GraphEvent::AddNewParent(parent_node_id, node_id, node_data));
+                    ui.close_menu();
+                }
+            });
+
+            if ui
+                .add(coloured_button("Delete", egui::Color32::LIGHT_RED.into()))
+                .clicked()
+            {
+                events.push(GraphEvent::RemoveChild(parent_node_id, node_id));
+                ui.close_menu();
+            }
+        });
     }
 
     events
