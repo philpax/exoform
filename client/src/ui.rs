@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext};
 
+use crate::RenderParameters;
+
 use super::OccupiedScreenSpace;
 use shared::*;
 
@@ -41,6 +43,7 @@ fn sdf_code_editor(
     mut graph: ResMut<Graph>,
     mut selected_node: ResMut<SelectedNode>,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
+    mut render_parameters: ResMut<RenderParameters>,
 ) {
     let ctx = egui_context.ctx_mut();
     let mut events = vec![];
@@ -78,6 +81,18 @@ fn sdf_code_editor(
                     graph.root_node_id,
                     0,
                 ));
+            });
+        })
+        .response
+        .rect
+        .width();
+
+    occupied_screen_space.right = egui::SidePanel::right("right_panel")
+        .default_width(400.0)
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Parameters");
+                ui.checkbox(&mut render_parameters.wireframe, "Wireframe");
             });
         })
         .response

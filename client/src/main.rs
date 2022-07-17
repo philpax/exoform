@@ -8,6 +8,11 @@ mod mesh_generation;
 mod ui;
 
 #[derive(Default)]
+pub struct RenderParameters {
+    pub wireframe: bool,
+}
+
+#[derive(Default)]
 pub struct OccupiedScreenSpace {
     left: f32,
     top: f32,
@@ -30,7 +35,9 @@ pub fn main() {
             ..Default::default()
         })
         .init_resource::<OccupiedScreenSpace>()
-        .add_plugins(DefaultPlugins);
+        .init_resource::<RenderParameters>()
+        .add_plugins(DefaultPlugins)
+        .add_plugin(bevy::pbr::wireframe::WireframePlugin);
 
     #[cfg(target_arch = "wasm32")]
     app.add_plugin(bevy_web_fullscreen::FullViewportPlugin);

@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::RenderParameters;
+
 struct CurrentEntity(Option<Entity>);
 struct RebuildTimer(Timer);
 
@@ -21,6 +23,7 @@ fn rebuild_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut current_entity: ResMut<CurrentEntity>,
+    render_parameters: Res<RenderParameters>,
     graph: Res<shared::Graph>,
 ) {
     create_mesh(
@@ -28,6 +31,7 @@ fn rebuild_mesh(
         &mut meshes,
         &mut materials,
         &mut current_entity,
+        &render_parameters,
         &graph,
     );
 }
@@ -38,12 +42,20 @@ fn keep_rebuilding_mesh(
     materials: ResMut<Assets<StandardMaterial>>,
     current_entity: ResMut<CurrentEntity>,
     mut rebuild_timer: ResMut<RebuildTimer>,
+    render_parameters: Res<RenderParameters>,
     graph: Res<shared::Graph>,
     time: Res<Time>,
 ) {
     rebuild_timer.0.tick(time.delta());
     if rebuild_timer.0.finished() {
-        rebuild_mesh(commands, meshes, materials, current_entity, graph);
+        rebuild_mesh(
+            commands,
+            meshes,
+            materials,
+            current_entity,
+            render_parameters,
+            graph,
+        );
     }
 }
 
@@ -52,6 +64,7 @@ fn create_mesh(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     current_entity: &mut CurrentEntity,
+    render_parameters: &RenderParameters,
     graph: &shared::Graph,
 ) {
     let raw_mesh = match shared::mesh::generate_mesh(graph) {
@@ -64,16 +77,16 @@ fn create_mesh(
         commands.entity(entity).despawn();
     }
 
-    current_entity.0 = Some(
-        commands
-            .spawn_bundle(PbrBundle {
-                mesh: meshes.add(mesh),
-                material: materials.add(Color::WHITE.into()),
-                transform: Transform::from_xyz(0.0, 0.0, 0.0),
-                ..default()
-            })
-            .id(),
-    );
+    let mut spawn_bundle = commands.spawn_bundle(PbrBundle {
+        mesh: meshes.add(mesh),
+        material: materials.add(Color::WHITE.into()),
+        transform: Transform::from_xyz(0.0, 0.0, 0.0),
+        ..default()
+    });
+    if render_parameters.wireframe {
+        spawn_bundle.insert(bevy::pbr::wireframe::Wireframe);
+    }
+    current_entity.0 = Some(spawn_bundle.id());
 }
 
 fn convert_to_bevy_mesh(raw_mesh: shared::mesh::Mesh) -> Mesh {
