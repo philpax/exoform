@@ -136,7 +136,7 @@ fn render_egui_tree(
                 egui::CollapsingHeader::new("Parameters")
                     .default_open(true)
                     .show(ui, |ui| {
-                        commands.append(&mut render_selected_node(ui, node));
+                        commands.extend(render_selected_node(ui, node));
                     });
                 if node.data.can_have_children() {
                     commands.extend(render_children(ui, graph, selected_node, node, depth));
@@ -239,29 +239,25 @@ fn render_children(
     commands
 }
 
-fn render_selected_node(ui: &mut egui::Ui, node: &shared::Node) -> Vec<GraphCommand> {
-    let mut commands = vec![];
-
+fn render_selected_node(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphCommand> {
     util::grid(ui, |ui| {
-        commands.extend(util::render_node_prelude_with_commands(ui, node));
-        if let Some(command) = render_selected_node_data(ui, node) {
-            commands.push(command);
+        NodeDiff {
+            rgb: util::render_colour(ui, node.rgb),
+            transform: util::render_transform(ui, &node.transform),
+            data: render_selected_node_data(ui, node),
+            children: None,
         }
-    });
-
-    commands
+        .into_option()
+        .map(|d| GraphCommand::ApplyDiff(node.id, d))
+    })
 }
 
-fn render_selected_node_data(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphCommand> {
+fn render_selected_node_data(ui: &mut egui::Ui, node: &shared::Node) -> Option<NodeDataDiff> {
     use util::dragger_row as row;
     macro_rules! apply_diff {
         ($($diff:tt)*) => {{
             let diff = $($diff)*;
-            if diff.has_changes() {
-                Some(GraphCommand::ApplyDiff(node.id, diff.into()))
-            } else {
-                None
-            }
+            diff.into_option().map(|d| d.into())
         }};
     }
 

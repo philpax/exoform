@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
-use shared::{GraphCommand, Node, NodeData, NodeDataMeta, NodeId};
+use shared::{GraphCommand, Node, NodeData, NodeDataMeta, NodeId, TransformDiff};
 
 pub fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
     egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
@@ -111,51 +111,18 @@ pub fn with_label<T>(ui: &mut egui::Ui, label: &str, f: impl Fn(&mut egui::Ui) -
     result
 }
 
-pub fn render_transform(
-    ui: &mut egui::Ui,
-    transform: &shared::Transform,
-) -> (Option<Vec3>, Option<Quat>, Option<f32>) {
+pub fn render_colour(ui: &mut egui::Ui, rgb: (f32, f32, f32)) -> Option<(f32, f32, f32)> {
+    with_label(ui, "Colour", |ui| colour(ui, rgb, Node::DEFAULT_COLOUR))
+}
+
+pub fn render_transform(ui: &mut egui::Ui, transform: &shared::Transform) -> Option<TransformDiff> {
     let tr = transform;
-    (
-        with_label(ui, "Translation", |ui| vec3(ui, tr.translation, Vec3::ZERO)),
-        with_label(ui, "Rotation", |ui| angle(ui, tr.rotation, Quat::IDENTITY)),
-        with_label(ui, "Scale", |ui| dragger(ui, tr.scale, 1.0)),
-    )
-}
-
-pub fn render_colour_with_commands(
-    ui: &mut egui::Ui,
-    node: &Node,
-) -> impl Iterator<Item = GraphCommand> {
-    let new_colour = with_label(ui, "Colour", |ui| {
-        colour(ui, node.rgb, Node::DEFAULT_COLOUR)
-    });
-
-    new_colour
-        .map(|rgb| GraphCommand::SetColour(node.id, rgb))
-        .into_iter()
-}
-
-pub fn render_transform_with_commands(
-    ui: &mut egui::Ui,
-    node: &Node,
-) -> impl Iterator<Item = GraphCommand> {
-    let (translation, rotation, scale) = render_transform(ui, &node.transform);
-    let translation = translation.map(|t| GraphCommand::SetTranslation(node.id, t));
-    let rotation = rotation.map(|r| GraphCommand::SetRotation(node.id, r));
-    let scale = scale.map(|s| GraphCommand::SetScale(node.id, s));
-
-    translation
-        .into_iter()
-        .chain(rotation.into_iter())
-        .chain(scale.into_iter())
-}
-
-pub fn render_node_prelude_with_commands(
-    ui: &mut egui::Ui,
-    node: &Node,
-) -> impl Iterator<Item = GraphCommand> {
-    render_colour_with_commands(ui, node).chain(render_transform_with_commands(ui, node))
+    TransformDiff {
+        translation: with_label(ui, "Translation", |ui| vec3(ui, tr.translation, Vec3::ZERO)),
+        rotation: with_label(ui, "Rotation", |ui| angle(ui, tr.rotation, Quat::IDENTITY)),
+        scale: with_label(ui, "Scale", |ui| dragger(ui, tr.scale, 1.0)),
+    }
+    .into_option()
 }
 
 pub fn render_add_dropdown(

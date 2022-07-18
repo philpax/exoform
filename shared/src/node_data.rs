@@ -123,8 +123,6 @@ pub struct Subtract {
     factor: f32,
 }
 
-// TODO: consider generating delta structs for each NodeData type using a macro
-
 macro_rules! generate_node_data {
     ($(($ty:ident, $diff:ident)),*) => {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

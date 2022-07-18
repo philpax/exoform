@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
-use crate::{node_data::*, Transform};
+use crate::{node_data::*, NodeDiff, Transform};
 use crate::{Node, NodeId};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,12 +37,7 @@ pub enum GraphCommand {
     RemoveChild(NodeId, NodeId),
     AddNewParent(NodeId, NodeId, NodeData),
 
-    ApplyDiff(NodeId, NodeDataDiff),
-
-    SetColour(NodeId, (f32, f32, f32)),
-    SetTranslation(NodeId, Vec3),
-    SetRotation(NodeId, Quat),
-    SetScale(NodeId, f32),
+    ApplyDiff(NodeId, NodeDiff),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -176,22 +170,7 @@ impl Graph {
                 parent.replace_child(*child_id, new_parent_id);
             }
 
-            GraphCommand::ApplyDiff(node_id, diff) => {
-                self.get_mut(*node_id)?.data.apply(diff.clone())
-            }
-
-            GraphCommand::SetColour(node_id, rgb) => {
-                self.get_mut(*node_id)?.rgb = *rgb;
-            }
-            GraphCommand::SetTranslation(node_id, translation) => {
-                self.get_mut(*node_id)?.transform.translation = *translation;
-            }
-            GraphCommand::SetRotation(node_id, rotation) => {
-                self.get_mut(*node_id)?.transform.rotation = *rotation;
-            }
-            GraphCommand::SetScale(node_id, scale) => {
-                self.get_mut(*node_id)?.transform.scale = *scale;
-            }
+            GraphCommand::ApplyDiff(node_id, diff) => self.get_mut(*node_id)?.apply(diff.clone()),
         }
 
         Some(())

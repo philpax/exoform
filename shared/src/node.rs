@@ -35,6 +35,27 @@ impl Default for Transform {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransformDiff {
+    pub translation: Option<Vec3>,
+    pub rotation: Option<Quat>,
+    pub scale: Option<f32>,
+}
+impl TransformDiff {
+    pub fn into_option(self) -> Option<Self> {
+        let has_changes =
+            self.translation.is_some() || self.rotation.is_some() || self.scale.is_some();
+        has_changes.then_some(self)
+    }
+}
+impl Transform {
+    pub fn apply(&mut self, diff: TransformDiff) {
+        self.translation = diff.translation.unwrap_or(self.translation);
+        self.rotation = diff.rotation.unwrap_or(self.rotation);
+        self.scale = diff.scale.unwrap_or(self.scale);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -88,14 +109,36 @@ impl Node {
         };
     }
 }
-impl ToString for Node {
-    fn to_string(&self) -> String {
-        let mut buf = Vec::new();
-        let mut serializer = serde_json::ser::Serializer::with_formatter(
-            &mut buf,
-            serde_json::ser::PrettyFormatter::with_indent(b" "),
-        );
-        self.serialize(&mut serializer).unwrap();
-        String::from_utf8(buf).unwrap()
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NodeDiff {
+    pub rgb: Option<(f32, f32, f32)>,
+    pub transform: Option<TransformDiff>,
+    pub data: Option<NodeDataDiff>,
+    pub children: Option<Vec<Option<NodeId>>>,
+}
+impl NodeDiff {
+    pub fn into_option(self) -> Option<Self> {
+        let has_changes = self.rgb.is_some()
+            || self.transform.is_some()
+            || self.data.is_some()
+            || self.children.is_some();
+        has_changes.then_some(self)
+    }
+}
+impl Node {
+    pub fn apply(&mut self, diff: NodeDiff) {
+        if let Some(rgb) = diff.rgb {
+            self.rgb = rgb;
+        }
+        if let Some(d) = diff.transform {
+            self.transform.apply(d);
+        }
+        if let Some(d) = diff.data {
+            self.data.apply(d);
+        }
+        if let Some(children) = diff.children {
+            self.children = children;
+        }
     }
 }
