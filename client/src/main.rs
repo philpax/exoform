@@ -74,37 +74,13 @@ pub async fn main() -> anyhow::Result<()> {
         .await?
         .into_split();
 
-    let (tx, rx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(None)));
+    let (rx, tx) = (Arc::new(Mutex::new(None)), Arc::new(Mutex::new(vec![])));
     tokio::spawn({
-        let tx = tx.clone();
         let shutdown = shutdown.clone();
-
-        async move {
-            loop {
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let mut to_send = vec![];
-                to_send.append(&mut tx.lock().unwrap());
-
-                for event in to_send {
-                    println!("{:?}", event);
-                    socket_tx
-                        .write_all(format!("{}\n", serde_json::to_string(&event)?).as_bytes())
-                        .await?;
-                }
-            }
-
-            anyhow::Ok(())
-        }
-    });
-    tokio::spawn({
+        let mut reader = BufReader::new(socket_rx);
         let rx = rx.clone();
-        let shutdown = shutdown.clone();
-        async move {
-            let mut reader = BufReader::new(socket_rx);
 
+        async move {
             loop {
                 if shutdown.load(Ordering::SeqCst) {
                     break;
@@ -115,10 +91,36 @@ pub async fn main() -> anyhow::Result<()> {
                 if n == 0 {
                     break;
                 }
-                let buf = buf.trim();
+                *rx.lock().unwrap() = Some(serde_json::from_str(buf.trim())?);
+            }
 
-                println!("network: {buf}");
-                *rx.lock().unwrap() = Some(serde_json::from_str(buf)?);
+            anyhow::Ok(())
+        }
+    });
+    tokio::spawn({
+        let shutdown = shutdown.clone();
+        let tx = tx.clone();
+
+        async move {
+            loop {
+                if shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                let to_send = tx
+                    .lock()
+                    .map(|mut v| {
+                        let ret = v.clone();
+                        v.clear();
+                        ret
+                    })
+                    .unwrap_or_default();
+
+                for event in to_send {
+                    socket_tx
+                        .write_all(format!("{}\n", serde_json::to_string(&event)?).as_bytes())
+                        .await?;
+                }
             }
 
             anyhow::Ok(())
@@ -160,8 +162,8 @@ pub async fn main() -> anyhow::Result<()> {
 }
 
 fn synchronise_network_to_local(mut graph: ResMut<Graph>, network_state: Res<NetworkState>) {
-    if let Some((nodes, root_node_id)) = network_state.rx.lock().unwrap().clone() {
-        *graph = Graph::from_components(nodes, root_node_id)
+    if let Some((nodes, root_node_id)) = network_state.rx.lock().unwrap().take() {
+        *graph = Graph::from_components(nodes, root_node_id);
     }
 }
 
