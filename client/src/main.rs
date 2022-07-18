@@ -35,12 +35,12 @@ pub struct OccupiedScreenSpace {
 
 pub struct NetworkState {
     shutdown: Arc<AtomicBool>,
-    tx: Arc<Mutex<Vec<shared::GraphEvent>>>,
+    tx: Arc<Mutex<Vec<shared::GraphCommand>>>,
     rx: Arc<Mutex<Option<(HashMap<NodeId, Node>, Option<NodeId>)>>>,
 }
 impl NetworkState {
-    pub fn send(&mut self, events: &[shared::GraphEvent]) {
-        self.tx.lock().unwrap().extend_from_slice(events);
+    pub fn send(&mut self, commands: &[shared::GraphCommand]) {
+        self.tx.lock().unwrap().extend_from_slice(commands);
     }
 }
 impl Drop for NetworkState {
@@ -116,9 +116,9 @@ pub async fn main() -> anyhow::Result<()> {
                     })
                     .unwrap_or_default();
 
-                for event in to_send {
+                for command in to_send {
                     socket_tx
-                        .write_all(format!("{}\n", serde_json::to_string(&event)?).as_bytes())
+                        .write_all(format!("{}\n", serde_json::to_string(&command)?).as_bytes())
                         .await?;
                 }
             }

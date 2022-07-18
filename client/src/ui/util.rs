@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
-use shared::{GraphEvent, Node, NodeData, NodeDataMeta, NodeId};
+use shared::{GraphCommand, Node, NodeData, NodeDataMeta, NodeId};
 
 pub fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
     egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
@@ -123,27 +123,27 @@ pub fn render_transform(
     )
 }
 
-pub fn render_colour_with_events(
+pub fn render_colour_with_commands(
     ui: &mut egui::Ui,
     node: &Node,
-) -> impl Iterator<Item = GraphEvent> {
+) -> impl Iterator<Item = GraphCommand> {
     let new_colour = with_label(ui, "Colour", |ui| {
         colour(ui, node.rgb, Node::DEFAULT_COLOUR)
     });
 
     new_colour
-        .map(|rgb| GraphEvent::SetColour(node.id, rgb))
+        .map(|rgb| GraphCommand::SetColour(node.id, rgb))
         .into_iter()
 }
 
-pub fn render_transform_with_events(
+pub fn render_transform_with_commands(
     ui: &mut egui::Ui,
     node: &Node,
-) -> impl Iterator<Item = GraphEvent> {
+) -> impl Iterator<Item = GraphCommand> {
     let (translation, rotation, scale) = render_transform(ui, &node.transform);
-    let translation = translation.map(|t| GraphEvent::SetTranslation(node.id, t));
-    let rotation = rotation.map(|r| GraphEvent::SetRotation(node.id, r));
-    let scale = scale.map(|s| GraphEvent::SetScale(node.id, s));
+    let translation = translation.map(|t| GraphCommand::SetTranslation(node.id, t));
+    let rotation = rotation.map(|r| GraphCommand::SetRotation(node.id, r));
+    let scale = scale.map(|s| GraphCommand::SetScale(node.id, s));
 
     translation
         .into_iter()
@@ -151,11 +151,11 @@ pub fn render_transform_with_events(
         .chain(scale.into_iter())
 }
 
-pub fn render_node_prelude_with_events(
+pub fn render_node_prelude_with_commands(
     ui: &mut egui::Ui,
     node: &Node,
-) -> impl Iterator<Item = GraphEvent> {
-    render_colour_with_events(ui, node).chain(render_transform_with_events(ui, node))
+) -> impl Iterator<Item = GraphCommand> {
+    render_colour_with_commands(ui, node).chain(render_transform_with_commands(ui, node))
 }
 
 pub fn render_add_dropdown(
@@ -218,9 +218,9 @@ pub fn render_add_button(
     depth: usize,
     parent_id: NodeId,
     child_index: Option<usize>,
-) -> Option<GraphEvent> {
+) -> Option<GraphCommand> {
     let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
-    new_child.map(|node_data| GraphEvent::AddChild(parent_id, child_index, node_data))
+    new_child.map(|node_data| GraphCommand::AddChild(parent_id, child_index, node_data))
 }
 
 pub fn depth_to_color(depth: usize, is_selected: bool) -> egui::color::Hsva {

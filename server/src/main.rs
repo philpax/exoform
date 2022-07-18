@@ -24,12 +24,12 @@ async fn main() -> anyhow::Result<()> {
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
     let mut graph = shared::Graph::new_authoritative(shared::NodeData::Union(shared::Union::new()));
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(128);
+    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(128);
     let (graph_tx, graph_rx) = tokio::sync::watch::channel(graph.to_components());
     tokio::spawn({
         async move {
-            while let Some(event) = event_rx.recv().await {
-                graph.apply_events(&[event]);
+            while let Some(command) = command_rx.recv().await {
+                graph.apply_commands(&[command]);
                 graph_tx.send(graph.to_components())?;
             }
             anyhow::Ok(())
@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         let (socket, peer_addr) = listener.accept().await?;
         let (read, mut write) = socket.into_split();
-        let event_tx = event_tx.clone();
+        let command_tx = command_tx.clone();
         let mut graph_rx = graph_rx.clone();
         let connected = Arc::new(AtomicBool::new(true));
 
@@ -66,8 +66,7 @@ async fn main() -> anyhow::Result<()> {
                     let buf = buf.trim();
 
                     println!("{}: {buf}", peer_addr);
-                    let event = serde_json::from_str(buf)?;
-                    event_tx.send(event).await?;
+                    command_tx.send(serde_json::from_str(buf)?).await?;
                 }
 
                 println!("{}: disconnected", peer_addr);

@@ -47,7 +47,7 @@ fn sdf_code_editor(
     graph: Res<Graph>,
 ) {
     let ctx = egui_context.ctx_mut();
-    let mut events = vec![];
+    let mut commands = vec![];
 
     match *selected_node {
         SelectedNode::Uninitialized => {
@@ -77,7 +77,7 @@ fn sdf_code_editor(
         .show(ctx, |ui| {
             if let Some(root_node_id) = graph.root_node_id() {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    events.append(&mut render_egui_tree(
+                    commands.append(&mut render_egui_tree(
                         ui,
                         &graph,
                         &mut selected_node,
@@ -104,7 +104,7 @@ fn sdf_code_editor(
         .rect
         .width();
 
-    network_state.send(&events);
+    network_state.send(&commands);
 }
 
 fn render_egui_tree(
@@ -114,16 +114,16 @@ fn render_egui_tree(
     parent_node_id: Option<NodeId>,
     node_id: NodeId,
     depth: usize,
-) -> Vec<GraphEvent> {
+) -> Vec<GraphCommand> {
     let node = graph.get(node_id).unwrap();
 
-    let mut events = vec![];
+    let mut commands = vec![];
     ui.push_id(node_id, |ui| {
         let id = ui.make_persistent_id(node.data.name());
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
             .show_header(ui, |ui| {
-                events.extend(render_header(
+                commands.extend(render_header(
                     ui,
                     graph,
                     selected_node,
@@ -136,15 +136,15 @@ fn render_egui_tree(
                 egui::CollapsingHeader::new("Parameters")
                     .default_open(true)
                     .show(ui, |ui| {
-                        events.append(&mut render_selected_node(ui, node));
+                        commands.append(&mut render_selected_node(ui, node));
                     });
                 if node.data.can_have_children() {
-                    events.extend(render_children(ui, graph, selected_node, node, depth));
+                    commands.extend(render_children(ui, graph, selected_node, node, depth));
                 }
             });
     });
 
-    events
+    commands
 }
 
 fn render_header(
@@ -154,8 +154,8 @@ fn render_header(
     parent_node_id: Option<NodeId>,
     node_id: NodeId,
     depth: usize,
-) -> Vec<GraphEvent> {
-    let mut events = vec![];
+) -> Vec<GraphCommand> {
+    let mut commands = vec![];
 
     let interact_size = ui.spacing().interact_size;
     let is_selected = selected_node.is_selected(node_id);
@@ -182,7 +182,11 @@ fn render_header(
         response.context_menu(|ui| {
             ui.menu_button("Add Parent", |ui| {
                 if let Some(node_data) = util::render_add_buttons(ui, false) {
-                    events.push(GraphEvent::AddNewParent(parent_node_id, node_id, node_data));
+                    commands.push(GraphCommand::AddNewParent(
+                        parent_node_id,
+                        node_id,
+                        node_data,
+                    ));
                     ui.close_menu();
                 }
             });
@@ -194,13 +198,13 @@ fn render_header(
                 ))
                 .clicked()
             {
-                events.push(GraphEvent::RemoveChild(parent_node_id, node_id));
+                commands.push(GraphCommand::RemoveChild(parent_node_id, node_id));
                 ui.close_menu();
             }
         });
     }
 
-    events
+    commands
 }
 
 fn render_children(
@@ -209,9 +213,9 @@ fn render_children(
     selected_node: &mut SelectedNode,
     parent: &shared::Node,
     depth: usize,
-) -> Vec<GraphEvent> {
+) -> Vec<GraphCommand> {
     let depth = depth + 1;
-    let mut events: Vec<_> = parent
+    let mut commands: Vec<_> = parent
         .children
         .iter()
         .enumerate()
@@ -228,33 +232,33 @@ fn render_children(
     if parent.data.can_have_children() {
         let new_child = util::render_add_button_max_width(ui, util::depth_to_color(depth, false));
         if let Some(node_data) = new_child {
-            events.push(GraphEvent::AddChild(parent.id, None, node_data));
+            commands.push(GraphCommand::AddChild(parent.id, None, node_data));
         }
     }
 
-    events
+    commands
 }
 
-fn render_selected_node(ui: &mut egui::Ui, node: &shared::Node) -> Vec<GraphEvent> {
-    let mut events = vec![];
+fn render_selected_node(ui: &mut egui::Ui, node: &shared::Node) -> Vec<GraphCommand> {
+    let mut commands = vec![];
 
     util::grid(ui, |ui| {
-        events.extend(util::render_node_prelude_with_events(ui, node));
-        if let Some(event) = render_selected_node_data(ui, node) {
-            events.push(event);
+        commands.extend(util::render_node_prelude_with_commands(ui, node));
+        if let Some(command) = render_selected_node_data(ui, node) {
+            commands.push(command);
         }
     });
 
-    events
+    commands
 }
 
-fn render_selected_node_data(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphEvent> {
+fn render_selected_node_data(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphCommand> {
     use util::dragger_row as row;
     macro_rules! apply_diff {
         ($($diff:tt)*) => {{
             let diff = $($diff)*;
             if diff.has_changes() {
-                Some(GraphEvent::ApplyDiff(node.id, diff.into()))
+                Some(GraphCommand::ApplyDiff(node.id, diff.into()))
             } else {
                 None
             }

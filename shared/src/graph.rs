@@ -33,7 +33,7 @@ impl IdGenerator {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum GraphEvent {
+pub enum GraphCommand {
     AddChild(NodeId, Option<usize>, NodeData),
     RemoveChild(NodeId, NodeId),
     AddNewParent(NodeId, NodeId, NodeData),
@@ -134,9 +134,9 @@ impl Graph {
         }
     }
 
-    fn apply_event(&mut self, event: &GraphEvent) -> Option<()> {
-        match event {
-            GraphEvent::AddChild(parent_id, index, node_data) => {
+    fn apply_command(&mut self, command: &GraphCommand) -> Option<()> {
+        match command {
+            GraphCommand::AddChild(parent_id, index, node_data) => {
                 let (index, can_have_children) = {
                     let parent = self.get(*parent_id)?;
                     (
@@ -152,11 +152,11 @@ impl Graph {
                 let parent = self.get_mut(*parent_id)?;
                 parent.add_child(index, child_id);
             }
-            GraphEvent::RemoveChild(parent_id, child_id) => {
+            GraphCommand::RemoveChild(parent_id, child_id) => {
                 let parent = self.get_mut(*parent_id)?;
                 parent.remove_child(*child_id);
             }
-            GraphEvent::AddNewParent(parent_id, child_id, node_data) => {
+            GraphCommand::AddNewParent(parent_id, child_id, node_data) => {
                 let child_transform = self.get(*child_id)?.transform;
 
                 assert!(node_data.can_have_children());
@@ -176,20 +176,20 @@ impl Graph {
                 parent.replace_child(*child_id, new_parent_id);
             }
 
-            GraphEvent::ApplyDiff(node_id, diff) => {
+            GraphCommand::ApplyDiff(node_id, diff) => {
                 self.get_mut(*node_id)?.data.apply(diff.clone())
             }
 
-            GraphEvent::SetColour(node_id, rgb) => {
+            GraphCommand::SetColour(node_id, rgb) => {
                 self.get_mut(*node_id)?.rgb = *rgb;
             }
-            GraphEvent::SetTranslation(node_id, translation) => {
+            GraphCommand::SetTranslation(node_id, translation) => {
                 self.get_mut(*node_id)?.transform.translation = *translation;
             }
-            GraphEvent::SetRotation(node_id, rotation) => {
+            GraphCommand::SetRotation(node_id, rotation) => {
                 self.get_mut(*node_id)?.transform.rotation = *rotation;
             }
-            GraphEvent::SetScale(node_id, scale) => {
+            GraphCommand::SetScale(node_id, scale) => {
                 self.get_mut(*node_id)?.transform.scale = *scale;
             }
         }
@@ -197,10 +197,10 @@ impl Graph {
         Some(())
     }
 
-    pub fn apply_events(&mut self, events: &[GraphEvent]) {
-        for event in events {
-            self.apply_event(event)
-                .expect("failed to apply event cleanly");
+    pub fn apply_commands(&mut self, commands: &[GraphCommand]) {
+        for command in commands {
+            self.apply_command(command)
+                .expect("failed to apply commands cleanly");
         }
         self.garbage_collect();
     }
