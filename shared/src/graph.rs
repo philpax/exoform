@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{node_data::*, Transform};
 use crate::{Node, NodeId};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct IdGenerator {
     last_id: NodeId,
     returned_ids: HashSet<NodeId>,
@@ -46,7 +46,7 @@ pub enum GraphCommand {
     SetScale(NodeId, f32),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Graph {
     nodes: HashMap<NodeId, Node>,
     root_node_id: Option<NodeId>,
