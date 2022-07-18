@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -12,6 +11,10 @@ use bevy_egui::EguiPlugin;
 use clap::Parser;
 
 use shared::{Graph, Node, NodeId};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::TcpStream,
+};
 
 mod camera;
 mod mesh_generation;
@@ -34,8 +37,6 @@ pub struct NetworkState {
     shutdown: Arc<AtomicBool>,
     tx: Arc<Mutex<Vec<shared::GraphEvent>>>,
     rx: Arc<Mutex<Option<(HashMap<NodeId, Node>, Option<NodeId>)>>>,
-    _write_thread: std::thread::JoinHandle<anyhow::Result<()>>,
-    _read_thread: std::thread::JoinHandle<anyhow::Result<()>>,
 }
 impl NetworkState {
     pub fn send(&mut self, events: &[shared::GraphEvent]) {
@@ -48,7 +49,8 @@ impl Drop for NetworkState {
     }
 }
 
-pub fn main() -> anyhow::Result<()> {
+#[tokio::main]
+pub async fn main() -> anyhow::Result<()> {
     #[cfg(target_arch = "wasm32")]
     {
         console_error_panic_hook::set_once();
@@ -68,17 +70,16 @@ pub fn main() -> anyhow::Result<()> {
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
     let shutdown = Arc::new(AtomicBool::new(false));
-    let socket = std::net::TcpStream::connect((args.host.as_ref(), port)).unwrap();
+    let (socket_rx, mut socket_tx) = TcpStream::connect((args.host.as_ref(), port))
+        .await?
+        .into_split();
 
     let (tx, rx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(None)));
-    let write_thread = std::thread::spawn({
+    tokio::spawn({
         let tx = tx.clone();
         let shutdown = shutdown.clone();
 
-        let mut socket = socket.try_clone()?;
-        move || {
-            use std::io::Write;
-
+        async move {
             loop {
                 if shutdown.load(Ordering::SeqCst) {
                     break;
@@ -89,19 +90,20 @@ pub fn main() -> anyhow::Result<()> {
 
                 for event in to_send {
                     println!("{:?}", event);
-                    writeln!(socket, "{}", serde_json::to_string(&event)?)?;
+                    socket_tx
+                        .write_all(format!("{}\n", serde_json::to_string(&event)?).as_bytes())
+                        .await?;
                 }
             }
 
             anyhow::Ok(())
         }
     });
-    let read_thread = std::thread::spawn({
+    tokio::spawn({
         let rx = rx.clone();
         let shutdown = shutdown.clone();
-        let socket = socket.try_clone()?;
-        move || {
-            let mut reader = BufReader::new(socket);
+        async move {
+            let mut reader = BufReader::new(socket_rx);
 
             loop {
                 if shutdown.load(Ordering::SeqCst) {
@@ -109,7 +111,7 @@ pub fn main() -> anyhow::Result<()> {
                 }
 
                 let mut buf = String::new();
-                let n = reader.read_line(&mut buf)?;
+                let n = reader.read_line(&mut buf).await?;
                 if n == 0 {
                     break;
                 }
@@ -137,8 +139,6 @@ pub fn main() -> anyhow::Result<()> {
             shutdown: shutdown.clone(),
             tx,
             rx,
-            _write_thread: write_thread,
-            _read_thread: read_thread,
         })
         .init_resource::<OccupiedScreenSpace>()
         .init_resource::<RenderParameters>()
