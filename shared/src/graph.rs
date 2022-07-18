@@ -48,22 +48,41 @@ pub enum GraphEvent {
 
 #[derive(Debug)]
 pub struct Graph {
-    pub nodes: HashMap<NodeId, Node>,
-    pub root_node_id: NodeId,
+    nodes: HashMap<NodeId, Node>,
+    root_node_id: Option<NodeId>,
 
-    id_generator: IdGenerator,
+    id_generator: Option<IdGenerator>,
 }
 impl Graph {
-    pub fn new(data: NodeData) -> Graph {
+    pub fn new_authoritative(data: NodeData) -> Graph {
         let mut nodes = HashMap::new();
         let mut id_generator = IdGenerator::new();
-        let root_node_id = Self::add_direct(&mut nodes, &mut id_generator, data);
+        let root_node_id = Some(Self::add_direct(&mut nodes, &mut id_generator, data));
         Graph {
             nodes,
             root_node_id,
-
-            id_generator,
+            id_generator: Some(id_generator),
         }
+    }
+
+    pub fn new_client() -> Graph {
+        Graph {
+            nodes: Default::default(),
+            root_node_id: None,
+            id_generator: None,
+        }
+    }
+
+    pub fn from_components(nodes: HashMap<NodeId, Node>, root_node_id: Option<NodeId>) -> Graph {
+        Graph {
+            nodes,
+            root_node_id,
+            id_generator: None,
+        }
+    }
+
+    pub fn to_components(&self) -> (HashMap<NodeId, Node>, Option<NodeId>) {
+        (self.nodes.clone(), self.root_node_id)
     }
 
     fn add_direct(
@@ -77,7 +96,13 @@ impl Graph {
     }
 
     pub fn add(&mut self, data: NodeData) -> NodeId {
-        Self::add_direct(&mut self.nodes, &mut self.id_generator, data)
+        Self::add_direct(
+            &mut self.nodes,
+            self.id_generator
+                .as_mut()
+                .expect("non-authoritative graph tried to add node"),
+            data,
+        )
     }
 
     pub fn get(&self, id: NodeId) -> Option<&Node> {
@@ -98,12 +123,14 @@ impl Graph {
     }
 
     fn garbage_collect(&mut self) {
-        let all: HashSet<_> = self.nodes.keys().copied().collect();
-        let mut seen = HashSet::new();
-        self.find_all_reachable_nodes(self.root_node_id, &mut seen);
+        if let Some(root_node_id) = self.root_node_id {
+            let all: HashSet<_> = self.nodes.keys().copied().collect();
+            let mut seen = HashSet::new();
+            self.find_all_reachable_nodes(root_node_id, &mut seen);
 
-        for node_id in all.difference(&seen) {
-            self.nodes.remove(node_id);
+            for node_id in all.difference(&seen) {
+                self.nodes.remove(node_id);
+            }
         }
     }
 
@@ -176,5 +203,9 @@ impl Graph {
                 .expect("failed to apply event cleanly");
         }
         self.garbage_collect();
+    }
+
+    pub fn root_node_id(&self) -> Option<NodeId> {
+        self.root_node_id
     }
 }

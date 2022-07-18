@@ -13,7 +13,7 @@ pub struct Mesh {
 
 pub fn generate_mesh(graph: &Graph) -> Option<Mesh> {
     let mut saft_graph = saft::Graph::default();
-    let root_id = node_to_saft_node(&mut saft_graph, graph, graph.root_node_id)?;
+    let root_id = node_to_saft_node(&mut saft_graph, graph, graph.root_node_id()?)?;
 
     let bounding_box = saft_graph.bounding_box(root_id);
     if bounding_box.volume() == 0.0 || !bounding_box.is_finite() {

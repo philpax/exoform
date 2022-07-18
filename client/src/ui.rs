@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext};
 
-use crate::RenderParameters;
+use crate::{NetworkState, RenderParameters};
 
 use super::OccupiedScreenSpace;
 use shared::*;
@@ -40,17 +40,20 @@ impl Plugin for UiPlugin {
 
 fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
-    mut graph: ResMut<Graph>,
     mut selected_node: ResMut<SelectedNode>,
     mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
     mut render_parameters: ResMut<RenderParameters>,
+    mut network_state: ResMut<NetworkState>,
+    graph: Res<Graph>,
 ) {
     let ctx = egui_context.ctx_mut();
     let mut events = vec![];
 
     match *selected_node {
         SelectedNode::Uninitialized => {
-            selected_node.select(graph.root_node_id);
+            if let Some(root_node_id) = graph.root_node_id() {
+                selected_node.select(root_node_id);
+            }
         }
         SelectedNode::Initialized(Some(selected_node_id)) => {
             // clear the selected node if the node no longer exists in the graph
@@ -72,16 +75,18 @@ fn sdf_code_editor(
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                events.append(&mut render_egui_tree(
-                    ui,
-                    &graph,
-                    &mut selected_node,
-                    None,
-                    graph.root_node_id,
-                    0,
-                ));
-            });
+            if let Some(root_node_id) = graph.root_node_id() {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    events.append(&mut render_egui_tree(
+                        ui,
+                        &graph,
+                        &mut selected_node,
+                        None,
+                        root_node_id,
+                        0,
+                    ));
+                });
+            }
         })
         .response
         .rect
@@ -99,7 +104,7 @@ fn sdf_code_editor(
         .rect
         .width();
 
-    graph.apply_events(&events);
+    network_state.send(&events);
 }
 
 fn render_egui_tree(

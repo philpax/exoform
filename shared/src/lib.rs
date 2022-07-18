@@ -8,3 +8,5 @@ mod graph;
 pub use graph::*;
 
 pub mod mesh;
+
+pub const DEFAULT_PORT: u16 = 23421;

@@ -10,8 +10,9 @@ version = "0.1.0"
 anyhow = "1.0.57"
 bevy = "0.8.0-dev"
 bevy_egui = {path = "../crates/bevy_egui"}
-bimap = "0.6.2"
+clap = { version = "3.2.12", features = ["derive"] }
 glam = "0.20.5"
+serde_json = "1.0.82"
 shared = {path = "../shared"}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
