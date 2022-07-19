@@ -130,6 +130,7 @@ impl Graph {
     }
 
     fn garbage_collect(&mut self) -> Vec<GraphChange> {
+        assert!(self.is_authoritative());
         let root_node_id = match self.root_node_id {
             Some(it) => it,
             _ => return vec![],
@@ -141,6 +142,7 @@ impl Graph {
         let ids: Vec<_> = all.difference(&seen).cloned().collect();
         for id in &ids {
             self.nodes.remove(id);
+            self.id_generator.as_mut().unwrap().returned_ids.insert(*id);
         }
         ids.into_iter().map(GraphChange::DeleteNode).collect()
     }
