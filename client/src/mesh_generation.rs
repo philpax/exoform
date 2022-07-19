@@ -20,7 +20,7 @@ fn keep_rebuilding_mesh(
     render_parameters: Res<RenderParameters>,
     graph: Res<shared::Graph>,
 ) {
-    if graph.is_added() || graph.is_changed() {
+    if render_parameters.is_changed() || graph.is_added() || graph.is_changed() {
         let raw_mesh = match shared::mesh::generate_mesh(&graph) {
             Some(m) => m,
             None => return,
