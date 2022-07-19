@@ -127,8 +127,9 @@ pub fn node_type(
             #(#struct_diff_fields),*
         }
         impl #item_diff_name {
-            pub fn has_changes(&self) -> bool {
-                #(#change_field_checks)||*
+            pub fn into_option(self) -> Option<Self> {
+                let has_changes = #(#change_field_checks)||*;
+                has_changes.then_some(self)
             }
         }
         impl #item_name {

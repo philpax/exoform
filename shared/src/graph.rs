@@ -1,12 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use glam::{Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
-use crate::{node_data::*, Transform};
+use crate::{node_data::*, NodeDiff, Transform};
 use crate::{Node, NodeId};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct IdGenerator {
     last_id: NodeId,
     returned_ids: HashSet<NodeId>,
@@ -32,52 +31,85 @@ impl IdGenerator {
     }
 }
 
+pub type GraphComponents = (HashMap<NodeId, Node>, Option<NodeId>);
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum GraphEvent {
+pub enum GraphCommand {
     AddChild(NodeId, Option<usize>, NodeData),
     RemoveChild(NodeId, NodeId),
     AddNewParent(NodeId, NodeId, NodeData),
 
-    ApplyDiff(NodeId, NodeDataDiff),
-
-    SetColour(NodeId, (f32, f32, f32)),
-    SetTranslation(NodeId, Vec3),
-    SetRotation(NodeId, Quat),
-    SetScale(NodeId, f32),
+    ApplyDiff(NodeId, NodeDiff),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum GraphChange {
+    Initialize(GraphComponents),
+    CreateNode(NodeId, Node),
+    DeleteNode(NodeId),
+    ApplyDiff(NodeId, NodeDiff),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Graph {
-    pub nodes: HashMap<NodeId, Node>,
-    pub root_node_id: NodeId,
+    nodes: HashMap<NodeId, Node>,
+    root_node_id: Option<NodeId>,
 
-    id_generator: IdGenerator,
+    id_generator: Option<IdGenerator>,
 }
+
 impl Graph {
-    pub fn new(data: NodeData) -> Graph {
+    pub fn new_authoritative(data: NodeData) -> Graph {
         let mut nodes = HashMap::new();
         let mut id_generator = IdGenerator::new();
-        let root_node_id = Self::add_direct(&mut nodes, &mut id_generator, data);
+        let root_node_id = Some({
+            let id = id_generator.generate();
+            nodes.insert(id, Node::new(id, data));
+            id
+        });
         Graph {
             nodes,
             root_node_id,
-
-            id_generator,
+            id_generator: Some(id_generator),
         }
     }
 
-    fn add_direct(
-        nodes: &mut HashMap<NodeId, Node>,
-        id_generator: &mut IdGenerator,
-        data: NodeData,
-    ) -> NodeId {
-        let id = id_generator.generate();
-        nodes.insert(id, Node::new(id, data));
-        id
+    pub fn new_client() -> Graph {
+        Graph {
+            nodes: Default::default(),
+            root_node_id: None,
+            id_generator: None,
+        }
     }
 
-    pub fn add(&mut self, data: NodeData) -> NodeId {
-        Self::add_direct(&mut self.nodes, &mut self.id_generator, data)
+    fn from_components((nodes, root_node_id): GraphComponents) -> Graph {
+        Graph {
+            nodes,
+            root_node_id,
+            id_generator: None,
+        }
+    }
+
+    pub fn to_components(&self) -> GraphComponents {
+        (self.nodes.clone(), self.root_node_id)
+    }
+
+    fn is_authoritative(&self) -> bool {
+        self.id_generator.is_some()
+    }
+
+    fn add(&mut self, data: NodeData, transform: Transform) -> (NodeId, GraphChange) {
+        assert!(self.is_authoritative());
+        let id = self.id_generator.as_mut().unwrap().generate();
+        let node = Node {
+            id,
+            rgb: Node::DEFAULT_COLOUR,
+            transform,
+            data,
+            children: vec![],
+        };
+        self.nodes.insert(id, node.clone());
+        (id, GraphChange::CreateNode(id, node))
     }
 
     pub fn get(&self, id: NodeId) -> Option<&Node> {
@@ -97,21 +129,31 @@ impl Graph {
         }
     }
 
-    fn garbage_collect(&mut self) {
+    fn garbage_collect(&mut self) -> Vec<GraphChange> {
+        assert!(self.is_authoritative());
+        let root_node_id = match self.root_node_id {
+            Some(it) => it,
+            _ => return vec![],
+        };
         let all: HashSet<_> = self.nodes.keys().copied().collect();
         let mut seen = HashSet::new();
-        self.find_all_reachable_nodes(self.root_node_id, &mut seen);
+        self.find_all_reachable_nodes(root_node_id, &mut seen);
 
-        for node_id in all.difference(&seen) {
-            self.nodes.remove(node_id);
+        let ids: Vec<_> = all.difference(&seen).cloned().collect();
+        for id in &ids {
+            self.nodes.remove(id);
+            self.id_generator.as_mut().unwrap().returned_ids.insert(*id);
         }
+        ids.into_iter().map(GraphChange::DeleteNode).collect()
     }
 
-    fn apply_event(&mut self, event: &GraphEvent) -> Option<()> {
-        match event {
-            GraphEvent::AddChild(parent_id, index, node_data) => {
+    fn apply_command(&mut self, command: &GraphCommand) -> Option<Vec<GraphChange>> {
+        let mut changes = vec![];
+        match command {
+            GraphCommand::AddChild(parent_id, index, node_data) => {
+                let parent_id = *parent_id;
                 let (index, can_have_children) = {
-                    let parent = self.get(*parent_id)?;
+                    let parent = self.get(parent_id)?;
                     (
                         index.unwrap_or(parent.children.len()),
                         parent.data.can_have_children(),
@@ -121,60 +163,88 @@ impl Graph {
                     panic!("tried to add child to node without children");
                 }
 
-                let child_id = self.add(node_data.clone());
-                let parent = self.get_mut(*parent_id)?;
-                parent.add_child(index, child_id);
+                let (child_id, graph_change) = self.add(node_data.clone(), Transform::default());
+                changes.push(graph_change);
+                let add_child_diff = self.get_mut(parent_id)?.add_child(index, child_id);
+                changes.push(GraphChange::ApplyDiff(parent_id, add_child_diff));
             }
-            GraphEvent::RemoveChild(parent_id, child_id) => {
+            GraphCommand::RemoveChild(parent_id, child_id) => {
                 let parent = self.get_mut(*parent_id)?;
-                parent.remove_child(*child_id);
+                let remove_child_diff = parent.remove_child(*child_id);
+                changes.push(GraphChange::ApplyDiff(*parent_id, remove_child_diff));
             }
-            GraphEvent::AddNewParent(parent_id, child_id, node_data) => {
-                let child_transform = self.get(*child_id)?.transform;
-
+            GraphCommand::AddNewParent(parent_id, child_id, node_data) => {
                 assert!(node_data.can_have_children());
-                let new_parent_id = self.add(node_data.clone());
-                {
-                    let parent = self.get_mut(new_parent_id)?;
-                    parent.add_child(0, *child_id);
-                    parent.transform = child_transform;
-                }
+
+                let (new_parent_id, graph_change) = {
+                    let child_transform = self.get(*child_id)?.transform;
+                    self.add(node_data.clone(), child_transform)
+                };
+                changes.push(graph_change);
+
+                let new_child_diff = self.get_mut(new_parent_id)?.add_child(0, *child_id);
+                changes.push(GraphChange::ApplyDiff(new_parent_id, new_child_diff));
 
                 {
-                    let child = self.get_mut(*child_id)?;
-                    child.transform = Transform::new();
+                    let transform_diff = NodeDiff {
+                        transform: Some(Transform::default().into()),
+                        ..Default::default()
+                    };
+                    self.get_mut(*child_id)?.apply(transform_diff.clone());
+                    changes.push(GraphChange::ApplyDiff(*child_id, transform_diff));
                 }
 
                 let parent = self.get_mut(*parent_id)?;
-                parent.replace_child(*child_id, new_parent_id);
+                let replace_child_diff = parent.replace_child(*child_id, new_parent_id);
+                changes.push(GraphChange::ApplyDiff(*parent_id, replace_child_diff));
             }
 
-            GraphEvent::ApplyDiff(node_id, diff) => {
-                self.get_mut(*node_id)?.data.apply(diff.clone())
-            }
-
-            GraphEvent::SetColour(node_id, rgb) => {
-                self.get_mut(*node_id)?.rgb = *rgb;
-            }
-            GraphEvent::SetTranslation(node_id, translation) => {
-                self.get_mut(*node_id)?.transform.translation = *translation;
-            }
-            GraphEvent::SetRotation(node_id, rotation) => {
-                self.get_mut(*node_id)?.transform.rotation = *rotation;
-            }
-            GraphEvent::SetScale(node_id, scale) => {
-                self.get_mut(*node_id)?.transform.scale = *scale;
+            GraphCommand::ApplyDiff(node_id, diff) => {
+                self.get_mut(*node_id)?.apply(diff.clone());
+                changes.push(GraphChange::ApplyDiff(*node_id, diff.clone()));
             }
         }
-
-        Some(())
+        Some(changes)
     }
 
-    pub fn apply_events(&mut self, events: &[GraphEvent]) {
-        for event in events {
-            self.apply_event(event)
-                .expect("failed to apply event cleanly");
+    pub fn apply_commands(&mut self, commands: &[GraphCommand]) -> Vec<GraphChange> {
+        assert!(self.is_authoritative());
+        let mut ret = vec![];
+        for command in commands {
+            ret.append(
+                &mut self
+                    .apply_command(command)
+                    .expect("failed to apply commands cleanly"),
+            );
         }
-        self.garbage_collect();
+        ret.append(&mut self.garbage_collect());
+        ret
+    }
+
+    pub fn apply_changes(&mut self, changes: &[GraphChange]) {
+        assert!(!self.is_authoritative());
+        for change in changes {
+            match change {
+                GraphChange::Initialize(components) => {
+                    *self = Self::from_components(components.clone());
+                }
+                GraphChange::CreateNode(node_id, node) => {
+                    self.nodes.insert(*node_id, node.clone());
+                }
+                GraphChange::DeleteNode(node_id) => {
+                    self.nodes.remove(node_id);
+                }
+                GraphChange::ApplyDiff(node_id, diff) => {
+                    self.nodes
+                        .get_mut(node_id)
+                        .expect("failed to find node to apply change to")
+                        .apply(diff.clone());
+                }
+            }
+        }
+    }
+
+    pub fn root_node_id(&self) -> Option<NodeId> {
+        self.root_node_id
     }
 }
