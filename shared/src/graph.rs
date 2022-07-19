@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{node_data::*, NodeDiff, Transform, TransformDiff};
+use crate::{node_data::*, NodeDiff, Transform};
 use crate::{Node, NodeId};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -187,11 +187,7 @@ impl Graph {
 
                 {
                     let transform_diff = NodeDiff {
-                        transform: Some(TransformDiff {
-                            translation: Some(Default::default()),
-                            rotation: Some(Default::default()),
-                            scale: Some(Default::default()),
-                        }),
+                        transform: Some(Transform::default().into()),
                         ..Default::default()
                     };
                     self.get_mut(*child_id)?.apply(transform_diff.clone());

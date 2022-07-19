@@ -55,6 +55,15 @@ impl Transform {
         self.scale = diff.scale.unwrap_or(self.scale);
     }
 }
+impl From<Transform> for TransformDiff {
+    fn from(t: Transform) -> Self {
+        TransformDiff {
+            translation: Some(t.translation),
+            rotation: Some(t.rotation),
+            scale: Some(t.scale),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
