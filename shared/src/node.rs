@@ -77,13 +77,18 @@ impl Node {
         }
     }
 
-    pub(crate) fn add_child(&mut self, index: usize, child_id: NodeId) {
+    pub(crate) fn add_child(&mut self, index: usize, child_id: NodeId) -> NodeDiff {
         self.children
             .resize(self.children.len().max(index + 1), None);
         self.children[index] = Some(child_id);
+
+        NodeDiff {
+            children: Some(self.children.clone()),
+            ..Default::default()
+        }
     }
 
-    pub(crate) fn remove_child(&mut self, to_remove_id: NodeId) {
+    pub(crate) fn remove_child(&mut self, to_remove_id: NodeId) -> NodeDiff {
         for child_id in &mut self.children {
             if *child_id == Some(to_remove_id) {
                 *child_id = None;
@@ -101,16 +106,26 @@ impl Node {
         if self.children.iter().all(Option::is_none) {
             self.children.clear();
         }
+
+        NodeDiff {
+            children: Some(self.children.clone()),
+            ..Default::default()
+        }
     }
 
-    pub(crate) fn replace_child(&mut self, old_child_id: NodeId, new_child_id: NodeId) {
+    pub(crate) fn replace_child(&mut self, old_child_id: NodeId, new_child_id: NodeId) -> NodeDiff {
         if let Some(child_slot) = self.children.iter_mut().find(|c| **c == Some(old_child_id)) {
             *child_slot = Some(new_child_id);
         };
+
+        NodeDiff {
+            children: Some(self.children.clone()),
+            ..Default::default()
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NodeDiff {
     pub rgb: Option<(f32, f32, f32)>,
     pub transform: Option<TransformDiff>,

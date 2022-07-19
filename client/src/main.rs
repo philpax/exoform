@@ -1,16 +1,13 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
 };
 
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use clap::Parser;
 
-use shared::{Graph, Node, NodeId};
+use shared::Graph;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
@@ -36,7 +33,7 @@ pub struct OccupiedScreenSpace {
 pub struct NetworkState {
     shutdown: Arc<AtomicBool>,
     tx: Arc<Mutex<Vec<shared::GraphCommand>>>,
-    rx: Arc<Mutex<Option<(HashMap<NodeId, Node>, Option<NodeId>)>>>,
+    rx: Arc<Mutex<Vec<shared::GraphChange>>>,
 }
 impl NetworkState {
     pub fn send(&mut self, commands: &[shared::GraphCommand]) {
@@ -74,8 +71,8 @@ pub async fn main() -> anyhow::Result<()> {
         .await?
         .into_split();
 
-    let (rx, tx) = (Arc::new(Mutex::new(None)), Arc::new(Mutex::new(vec![])));
-    tokio::spawn({
+    let (rx, tx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(vec![])));
+    let _read_task = tokio::spawn({
         let shutdown = shutdown.clone();
         let mut reader = BufReader::new(socket_rx);
         let rx = rx.clone();
@@ -91,13 +88,13 @@ pub async fn main() -> anyhow::Result<()> {
                 if n == 0 {
                     break;
                 }
-                *rx.lock().unwrap() = Some(serde_json::from_str(buf.trim())?);
+                *rx.lock().unwrap() = serde_json::from_str(buf.trim())?;
             }
 
             anyhow::Ok(())
         }
     });
-    tokio::spawn({
+    let _write_task = tokio::spawn({
         let shutdown = shutdown.clone();
         let tx = tx.clone();
 
@@ -162,9 +159,9 @@ pub async fn main() -> anyhow::Result<()> {
 }
 
 fn synchronise_network_to_local(mut graph: ResMut<Graph>, network_state: Res<NetworkState>) {
-    if let Some((nodes, root_node_id)) = network_state.rx.lock().unwrap().take() {
-        *graph = Graph::from_components(nodes, root_node_id);
-    }
+    let changes = &mut network_state.rx.lock().unwrap();
+    graph.apply_changes(changes);
+    changes.clear();
 }
 
 fn setup(mut commands: Commands) {

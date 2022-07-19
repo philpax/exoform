@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use clap::Parser;
-use shared::{Graph, NodeData};
+use shared::{Graph, GraphChange, NodeData};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net,
@@ -32,38 +32,38 @@ async fn main() -> anyhow::Result<()> {
         Ok(contents) => serde_json::from_str(&contents)?,
         _ => Graph::new_authoritative(NodeData::Union(Default::default())),
     };
-    let (graph_tx, graph_rx) = tokio::sync::watch::channel(graph.to_components());
-    let _graph_task = tokio::spawn(async move {
-        let graph = Arc::new(Mutex::new(graph));
-
-        let _graph_save_task = tokio::spawn({
-            let graph = graph.clone();
-            let filename = args.filename.clone();
-            async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-                loop {
-                    interval.tick().await;
-
-                    let contents = match graph.lock() {
-                        Ok(graph) => serde_json::to_string_pretty(&*graph)?,
-                        _ => continue,
-                    };
-                    tokio::fs::write(&filename, contents).await?;
+    let graph = Arc::new(Mutex::new(graph));
+    let (graph_tx, graph_rx) = tokio::sync::watch::channel(vec![]);
+    let _graph_broadcast_task = tokio::spawn({
+        let graph = graph.clone();
+        async move {
+            while let Some(command) = command_rx.recv().await {
+                if let Ok(mut graph) = graph.lock() {
+                    graph_tx.send(graph.apply_commands(&[command]))?;
                 }
-
-                #[allow(unreachable_code)]
-                anyhow::Ok(())
             }
-        });
 
-        while let Some(command) = command_rx.recv().await {
-            if let Ok(mut graph) = graph.lock() {
-                graph.apply_commands(&[command]);
-                graph_tx.send(graph.to_components())?;
-            }
+            anyhow::Ok(())
         }
+    });
+    let _graph_save_task = tokio::spawn({
+        let graph = graph.clone();
+        let filename = args.filename.clone();
+        async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
 
-        anyhow::Ok(())
+                let contents = match graph.lock() {
+                    Ok(graph) => serde_json::to_string_pretty(&*graph)?,
+                    _ => continue,
+                };
+                tokio::fs::write(&filename, contents).await?;
+            }
+
+            #[allow(unreachable_code)]
+            anyhow::Ok(())
+        }
     });
 
     let listener = net::TcpListener::bind((args.host.as_ref(), port)).await?;
@@ -72,15 +72,27 @@ async fn main() -> anyhow::Result<()> {
     loop {
         let (socket, peer_addr) = listener.accept().await?;
         let (read, mut write) = socket.into_split();
+
+        async fn send(
+            write: &mut tokio::net::tcp::OwnedWriteHalf,
+            msg: String,
+        ) -> std::io::Result<()> {
+            write.write_all(format!("{}\n", msg).as_bytes()).await
+        }
+
         let command_tx = command_tx.clone();
-        let mut graph_rx = graph_rx.clone();
         let connected = Arc::new(AtomicBool::new(true));
 
         println!("{}: new connection", peer_addr);
-        let value = graph_rx.borrow().clone();
-        write
-            .write_all(format!("{}\n", serde_json::to_string(&value)?).as_bytes())
-            .await?;
+
+        let mut graph_rx = graph_rx.clone();
+        if graph_rx.has_changed()? {
+            // clear the change flag if necessary - we're about to initialise this peer
+            graph_rx.changed().await?;
+        }
+
+        let initialize_change = GraphChange::Initialize(graph.lock().unwrap().to_components());
+        send(&mut write, serde_json::to_string(&[initialize_change])?).await?;
 
         let _peer_read_task = tokio::spawn({
             let connected = connected.clone();
@@ -95,7 +107,6 @@ async fn main() -> anyhow::Result<()> {
                     }
                     let buf = buf.trim();
 
-                    println!("{}: {buf}", peer_addr);
                     command_tx.send(serde_json::from_str(buf)?).await?;
                 }
 
@@ -105,14 +116,15 @@ async fn main() -> anyhow::Result<()> {
             }
         });
 
-        let _peer_write_task = tokio::spawn(async move {
-            while graph_rx.changed().await.is_ok() && connected.load(Ordering::SeqCst) {
-                let value = graph_rx.borrow().clone();
-                write
-                    .write_all(format!("{}\n", serde_json::to_string(&value)?).as_bytes())
-                    .await?;
+        let _peer_write_task = tokio::spawn({
+            async move {
+                while connected.load(Ordering::SeqCst) {
+                    graph_rx.changed().await?;
+                    let payload = serde_json::to_string(graph_rx.borrow().as_slice())?;
+                    send(&mut write, payload).await?;
+                }
+                anyhow::Ok(())
             }
-            anyhow::Ok(())
         });
     }
 }
