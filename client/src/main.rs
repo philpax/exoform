@@ -88,7 +88,9 @@ pub async fn main() -> anyhow::Result<()> {
                 if n == 0 {
                     break;
                 }
-                *rx.lock().unwrap() = serde_json::from_str(buf.trim())?;
+                rx.lock()
+                    .unwrap()
+                    .append(&mut serde_json::from_str(buf.trim())?);
             }
 
             anyhow::Ok(())
