@@ -7,7 +7,7 @@ use clap::Parser;
 use shared::{Graph, GraphChange, NodeData};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net,
+    net, sync,
 };
 
 #[tokio::main]
@@ -26,14 +26,14 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
-    let (command_tx, mut command_rx) = tokio::sync::mpsc::channel(128);
+    let (command_tx, mut command_rx) = sync::mpsc::channel(128);
 
     let graph = match tokio::fs::read_to_string(&args.filename).await {
         Ok(contents) => serde_json::from_str(&contents)?,
         _ => Graph::new_authoritative(NodeData::Union(Default::default())),
     };
     let graph = Arc::new(Mutex::new(graph));
-    let (graph_tx, graph_rx) = tokio::sync::watch::channel(vec![]);
+    let (graph_tx, graph_rx) = sync::watch::channel(vec![]);
     let _graph_broadcast_task = tokio::spawn({
         let graph = graph.clone();
         async move {
@@ -71,60 +71,72 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let (socket, peer_addr) = listener.accept().await?;
-        let (read, mut write) = socket.into_split();
 
-        async fn send(
-            write: &mut tokio::net::tcp::OwnedWriteHalf,
-            msg: String,
-        ) -> std::io::Result<()> {
-            write.write_all(format!("{}\n", msg).as_bytes()).await
-        }
-
-        let command_tx = command_tx.clone();
-        let connected = Arc::new(AtomicBool::new(true));
-
-        println!("{}: new connection", peer_addr);
-
-        let mut graph_rx = graph_rx.clone();
-        if graph_rx.has_changed()? {
-            // clear the change flag if necessary - we're about to initialise this peer
-            graph_rx.changed().await?;
-        }
-
-        let initialize_change = GraphChange::Initialize(graph.lock().unwrap().to_components());
-        send(&mut write, serde_json::to_string(&[initialize_change])?).await?;
-
-        let _peer_read_task = tokio::spawn({
-            let connected = connected.clone();
-            async move {
-                let mut reader = BufReader::new(read);
-
-                loop {
-                    let mut buf = String::new();
-                    let n = reader.read_line(&mut buf).await?;
-                    if n == 0 {
-                        break;
-                    }
-                    let buf = buf.trim();
-
-                    command_tx.send(serde_json::from_str(buf)?).await?;
-                }
-
-                println!("{}: disconnected", peer_addr);
-                connected.store(false, Ordering::SeqCst);
-                anyhow::Ok(())
-            }
-        });
-
-        let _peer_write_task = tokio::spawn({
-            async move {
-                while connected.load(Ordering::SeqCst) {
-                    graph_rx.changed().await?;
-                    let payload = serde_json::to_string(graph_rx.borrow().as_slice())?;
-                    send(&mut write, payload).await?;
-                }
-                anyhow::Ok(())
-            }
-        });
+        handle_peer(
+            socket,
+            peer_addr,
+            command_tx.clone(),
+            graph_rx.clone(),
+            graph.clone(),
+        )
+        .await?;
     }
+}
+
+async fn handle_peer(
+    socket: net::TcpStream,
+    peer_addr: std::net::SocketAddr,
+    command_tx: sync::mpsc::Sender<shared::GraphCommand>,
+    mut graph_rx: sync::watch::Receiver<Vec<GraphChange>>,
+    graph: Arc<Mutex<Graph>>,
+) -> anyhow::Result<()> {
+    let (read, mut write) = socket.into_split();
+    async fn send(write: &mut tokio::net::tcp::OwnedWriteHalf, msg: String) -> std::io::Result<()> {
+        write.write_all(format!("{}\n", msg).as_bytes()).await
+    }
+
+    let connected = Arc::new(AtomicBool::new(true));
+    println!("{}: new connection", peer_addr);
+
+    if graph_rx.has_changed()? {
+        // clear the change flag if necessary - we're about to initialise this peer
+        graph_rx.changed().await?;
+    }
+    let initialize_change = GraphChange::Initialize(graph.lock().unwrap().to_components());
+    send(&mut write, serde_json::to_string(&[initialize_change])?).await?;
+
+    let _peer_read_task = tokio::spawn({
+        let connected = connected.clone();
+        async move {
+            let mut reader = BufReader::new(read);
+
+            loop {
+                let mut buf = String::new();
+                let n = reader.read_line(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
+                let buf = buf.trim();
+
+                command_tx.send(serde_json::from_str(buf)?).await?;
+            }
+
+            println!("{}: disconnected", peer_addr);
+            connected.store(false, Ordering::SeqCst);
+            anyhow::Ok(())
+        }
+    });
+
+    let _peer_write_task = tokio::spawn({
+        async move {
+            while connected.load(Ordering::SeqCst) {
+                graph_rx.changed().await?;
+                let payload = serde_json::to_string(graph_rx.borrow().as_slice())?;
+                send(&mut write, payload).await?;
+            }
+            anyhow::Ok(())
+        }
+    });
+
+    Ok(())
 }
