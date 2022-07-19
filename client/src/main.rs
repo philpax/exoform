@@ -162,8 +162,10 @@ pub async fn main() -> anyhow::Result<()> {
 
 fn synchronise_network_to_local(mut graph: ResMut<Graph>, network_state: Res<NetworkState>) {
     let changes = &mut network_state.rx.lock().unwrap();
-    graph.apply_changes(changes);
-    changes.clear();
+    if !changes.is_empty() {
+        graph.apply_changes(changes);
+        changes.clear();
+    }
 }
 
 fn setup(mut commands: Commands) {
