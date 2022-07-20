@@ -96,11 +96,8 @@ async fn handle_peer(
         // clear the change flag if necessary - we're about to initialise this peer
         graph_rx.changed().await?;
     }
-    shared::protocol::write(
-        &mut write,
-        GraphChange::Initialize(graph.lock().unwrap().to_components()).into(),
-    )
-    .await?;
+    let components = graph.lock().unwrap().to_components();
+    shared::protocol::write(&mut write, GraphChange::Initialize(components).into()).await?;
 
     let _peer_read_task = tokio::spawn({
         let connected = connected.clone();

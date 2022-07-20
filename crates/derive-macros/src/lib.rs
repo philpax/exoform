@@ -62,7 +62,7 @@ pub fn node_type(
             (
                 f.ident.as_ref().unwrap().clone(),
                 f.ty.clone(),
-                attr_fields.0.clone(),
+                attr_fields.0,
             )
         })
         .collect();
