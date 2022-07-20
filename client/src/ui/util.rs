@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
-use shared::{GraphCommand, Node, NodeData, NodeDataMeta, NodeId, TransformDiff};
+use shared::{GraphCommand, NodeData, NodeDataMeta, NodeId, TransformDiff};
 
 pub fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
     egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
@@ -90,29 +90,11 @@ pub fn angle(ui: &mut egui::Ui, value: Quat, default_value: Quat) -> Option<Quat
     })
 }
 
-pub fn colour(
-    ui: &mut egui::Ui,
-    value: (f32, f32, f32),
-    default_value: (f32, f32, f32),
-) -> Option<(f32, f32, f32)> {
-    with_reset_button(ui, value, default_value, |ui, value| {
-        let mut rgb = [value.0, value.1, value.2];
-        let response = egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb);
-        [value.0, value.1, value.2] = rgb;
-
-        response.changed()
-    })
-}
-
 pub fn with_label<T>(ui: &mut egui::Ui, label: &str, f: impl Fn(&mut egui::Ui) -> T) -> T {
     ui.label(label);
     let result = f(ui);
     ui.end_row();
     result
-}
-
-pub fn render_colour(ui: &mut egui::Ui, rgb: (f32, f32, f32)) -> Option<(f32, f32, f32)> {
-    with_label(ui, "Colour", |ui| colour(ui, rgb, Node::DEFAULT_COLOUR))
 }
 
 pub fn render_transform(ui: &mut egui::Ui, transform: &shared::Transform) -> Option<TransformDiff> {
@@ -186,11 +168,11 @@ pub fn render_add_button(
     parent_id: NodeId,
     child_index: Option<usize>,
 ) -> Option<GraphCommand> {
-    let new_child = render_add_button_max_width(ui, depth_to_color(depth, false));
+    let new_child = render_add_button_max_width(ui, depth_to_colour(depth, false));
     new_child.map(|node_data| GraphCommand::AddChild(parent_id, child_index, node_data))
 }
 
-pub fn depth_to_color(depth: usize, is_selected: bool) -> egui::color::Hsva {
+pub fn depth_to_colour(depth: usize, is_selected: bool) -> egui::color::Hsva {
     let (s, v) = if is_selected { (0.9, 0.4) } else { (0.9, 0.2) };
     egui::color::Hsva::new(((depth as f32 / 10.0) * 2.7) % 1.0, s, v, 1.0)
 }

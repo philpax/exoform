@@ -4,7 +4,7 @@ use bevy_egui::{egui, EguiContext};
 use crate::{NetworkState, RenderParameters};
 
 use super::OccupiedScreenSpace;
-use shared::*;
+use shared::{Node, *};
 
 mod util;
 
@@ -136,7 +136,7 @@ fn render_egui_tree(
                 egui::CollapsingHeader::new("Parameters")
                     .default_open(true)
                     .show(ui, |ui| {
-                        commands.extend(render_selected_node(ui, node));
+                        commands.extend(render_selected_node(ui, node, depth));
                     });
                 if node.data.can_have_children() {
                     commands.extend(render_children(ui, graph, selected_node, node, depth));
@@ -161,7 +161,7 @@ fn render_header(
     let is_selected = selected_node.is_selected(node_id);
     let name = graph.get(node_id).unwrap().data.name();
     let (bg_colour, fg_colour) = (
-        util::depth_to_color(depth, is_selected),
+        util::depth_to_colour(depth, is_selected),
         egui::Color32::WHITE,
     );
 
@@ -205,7 +205,7 @@ fn render_children(
     ui: &mut egui::Ui,
     graph: &Graph,
     selected_node: &mut SelectedNode,
-    parent: &shared::Node,
+    parent: &Node,
     depth: usize,
 ) -> Vec<GraphCommand> {
     let depth = depth + 1;
@@ -224,7 +224,7 @@ fn render_children(
         .collect();
 
     if parent.data.can_have_children() {
-        let new_child = util::render_add_button_max_width(ui, util::depth_to_color(depth, false));
+        let new_child = util::render_add_button_max_width(ui, util::depth_to_colour(depth, false));
         if let Some(node_data) = new_child {
             commands.push(GraphCommand::AddChild(parent.id, None, node_data));
         }
@@ -233,10 +233,26 @@ fn render_children(
     commands
 }
 
-fn render_selected_node(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphCommand> {
+fn render_selected_node(ui: &mut egui::Ui, node: &Node, depth: usize) -> Option<GraphCommand> {
     util::grid(ui, |ui| {
         NodeDiff {
-            rgb: util::render_colour(ui, node.rgb),
+            rgb: util::with_label(ui, "Colour", |ui| {
+                let depth_colour = util::depth_to_colour(depth, false);
+
+                util::with_reset_button(ui, node.rgb, Node::DEFAULT_COLOUR, |ui, (r, g, b)| {
+                    let mut rgb = [*r, *g, *b];
+                    let widget_changed =
+                        egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb).changed();
+                    let button_clicked = ui
+                        .add(util::coloured_button("Depth", depth_colour))
+                        .clicked();
+                    if button_clicked {
+                        rgb = depth_colour.to_rgb();
+                    }
+                    [*r, *g, *b] = rgb;
+                    widget_changed || button_clicked
+                })
+            }),
             transform: util::render_transform(ui, &node.transform),
             data: render_selected_node_data(ui, node),
             children: None,
@@ -246,7 +262,7 @@ fn render_selected_node(ui: &mut egui::Ui, node: &shared::Node) -> Option<GraphC
     })
 }
 
-fn render_selected_node_data(ui: &mut egui::Ui, node: &shared::Node) -> Option<NodeDataDiff> {
+fn render_selected_node_data(ui: &mut egui::Ui, node: &Node) -> Option<NodeDataDiff> {
     use util::dragger_row as row;
     macro_rules! apply_diff {
         ($($diff:tt)*) => {{
