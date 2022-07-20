@@ -76,16 +76,19 @@ pub async fn main() -> anyhow::Result<()> {
 
         async move {
             loop {
+                use shared::protocol::Message;
+
                 if shutdown.load(Ordering::SeqCst) {
                     break;
                 }
 
-                let message: Vec<shared::GraphChange> =
-                    match shared::protocol::read(&mut socket_rx).await {
-                        Some(cmd) => cmd?,
-                        None => break,
-                    };
-                rx.lock().unwrap().extend_from_slice(&message);
+                let message = match shared::protocol::read(&mut socket_rx).await {
+                    Some(Ok(Message::GraphChange(cmd))) => cmd,
+                    Some(Ok(msg)) => panic!("unexpected message: {msg:?}"),
+                    Some(Err(err)) => return Err(err),
+                    None => break,
+                };
+                rx.lock().unwrap().push(message);
             }
 
             anyhow::Ok(())
@@ -102,15 +105,12 @@ pub async fn main() -> anyhow::Result<()> {
                     break;
                 }
 
-                let to_send = {
-                    let mut v = vec![];
-                    if let Ok(mut mv) = tx.lock() {
-                        v.append(&mut mv);
-                    }
-                    v
-                };
+                let to_send: Vec<shared::GraphCommand> = tx
+                    .lock()
+                    .map(|mut ms| ms.drain(..).collect())
+                    .unwrap_or_default();
                 for command in to_send {
-                    shared::protocol::write(&mut socket_tx, &command).await?;
+                    shared::protocol::write(&mut socket_tx, command.into()).await?;
                 }
             }
 

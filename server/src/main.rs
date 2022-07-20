@@ -98,9 +98,7 @@ async fn handle_peer(
     }
     shared::protocol::write(
         &mut write,
-        &vec![GraphChange::Initialize(
-            graph.lock().unwrap().to_components(),
-        )],
+        GraphChange::Initialize(graph.lock().unwrap().to_components()).into(),
     )
     .await?;
 
@@ -108,8 +106,12 @@ async fn handle_peer(
         let connected = connected.clone();
         async move {
             loop {
+                use shared::protocol::Message;
+
                 let message = match shared::protocol::read(&mut read).await {
-                    Some(cmd) => cmd?,
+                    Some(Ok(Message::GraphCommand(cmd))) => cmd,
+                    Some(Ok(msg)) => panic!("unexpected message: {msg:?}"),
+                    Some(Err(err)) => return Err(err),
                     None => break,
                 };
                 command_tx.send(message).await?;
@@ -127,7 +129,9 @@ async fn handle_peer(
             while connected.load(Ordering::SeqCst) {
                 graph_rx.changed().await?;
                 let payload = graph_rx.borrow().to_owned();
-                shared::protocol::write(&mut write, &payload).await?;
+                for change in payload {
+                    shared::protocol::write(&mut write, change.into()).await?;
+                }
             }
             anyhow::Ok(())
         }
