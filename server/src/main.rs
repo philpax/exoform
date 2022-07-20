@@ -5,10 +5,7 @@ use std::sync::{
 
 use clap::Parser;
 use shared::{Graph, GraphChange, NodeData};
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net, sync,
-};
+use tokio::{net, sync};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -90,10 +87,7 @@ async fn handle_peer(
     mut graph_rx: sync::watch::Receiver<Vec<GraphChange>>,
     graph: Arc<Mutex<Graph>>,
 ) -> anyhow::Result<()> {
-    let (read, mut write) = socket.into_split();
-    async fn send(write: &mut tokio::net::tcp::OwnedWriteHalf, msg: String) -> std::io::Result<()> {
-        write.write_all(format!("{}\n", msg).as_bytes()).await
-    }
+    let (mut read, mut write) = socket.into_split();
 
     let connected = Arc::new(AtomicBool::new(true));
     println!("{}: new connection", peer_addr);
@@ -102,27 +96,28 @@ async fn handle_peer(
         // clear the change flag if necessary - we're about to initialise this peer
         graph_rx.changed().await?;
     }
-    let initialize_change = GraphChange::Initialize(graph.lock().unwrap().to_components());
-    send(&mut write, serde_json::to_string(&[initialize_change])?).await?;
+    shared::protocol::write(
+        &mut write,
+        &vec![GraphChange::Initialize(
+            graph.lock().unwrap().to_components(),
+        )],
+    )
+    .await?;
 
     let _peer_read_task = tokio::spawn({
         let connected = connected.clone();
         async move {
-            let mut reader = BufReader::new(read);
-
             loop {
-                let mut buf = String::new();
-                let n = reader.read_line(&mut buf).await?;
-                if n == 0 {
-                    break;
-                }
-                let buf = buf.trim();
-
-                command_tx.send(serde_json::from_str(buf)?).await?;
+                let message = match shared::protocol::read(&mut read).await {
+                    Some(cmd) => cmd?,
+                    None => break,
+                };
+                command_tx.send(message).await?;
             }
 
             println!("{}: disconnected", peer_addr);
             connected.store(false, Ordering::SeqCst);
+
             anyhow::Ok(())
         }
     });
@@ -131,8 +126,8 @@ async fn handle_peer(
         async move {
             while connected.load(Ordering::SeqCst) {
                 graph_rx.changed().await?;
-                let payload = serde_json::to_string(graph_rx.borrow().as_slice())?;
-                send(&mut write, payload).await?;
+                let payload = graph_rx.borrow().to_owned();
+                shared::protocol::write(&mut write, &payload).await?;
             }
             anyhow::Ok(())
         }

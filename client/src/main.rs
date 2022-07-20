@@ -8,10 +8,7 @@ use bevy_egui::EguiPlugin;
 use clap::Parser;
 
 use shared::Graph;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::TcpStream,
-};
+use tokio::net::TcpStream;
 
 mod camera;
 mod mesh_generation;
@@ -67,14 +64,14 @@ pub async fn main() -> anyhow::Result<()> {
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
     let shutdown = Arc::new(AtomicBool::new(false));
-    let (socket_rx, mut socket_tx) = TcpStream::connect((args.host.as_ref(), port))
+    let (socket_rx, socket_tx) = TcpStream::connect((args.host.as_ref(), port))
         .await?
         .into_split();
 
     let (rx, tx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(vec![])));
     let _read_task = tokio::spawn({
+        let mut socket_rx = socket_rx;
         let shutdown = shutdown.clone();
-        let mut reader = BufReader::new(socket_rx);
         let rx = rx.clone();
 
         async move {
@@ -83,20 +80,19 @@ pub async fn main() -> anyhow::Result<()> {
                     break;
                 }
 
-                let mut buf = String::new();
-                let n = reader.read_line(&mut buf).await?;
-                if n == 0 {
-                    break;
-                }
-                rx.lock()
-                    .unwrap()
-                    .append(&mut serde_json::from_str(buf.trim())?);
+                let message: Vec<shared::GraphChange> =
+                    match shared::protocol::read(&mut socket_rx).await {
+                        Some(cmd) => cmd?,
+                        None => break,
+                    };
+                rx.lock().unwrap().extend_from_slice(&message);
             }
 
             anyhow::Ok(())
         }
     });
     let _write_task = tokio::spawn({
+        let mut socket_tx = socket_tx;
         let shutdown = shutdown.clone();
         let tx = tx.clone();
 
@@ -106,19 +102,15 @@ pub async fn main() -> anyhow::Result<()> {
                     break;
                 }
 
-                let to_send = tx
-                    .lock()
-                    .map(|mut v| {
-                        let ret = v.clone();
-                        v.clear();
-                        ret
-                    })
-                    .unwrap_or_default();
-
+                let to_send = {
+                    let mut v = vec![];
+                    if let Ok(mut mv) = tx.lock() {
+                        v.append(&mut mv);
+                    }
+                    v
+                };
                 for command in to_send {
-                    socket_tx
-                        .write_all(format!("{}\n", serde_json::to_string(&command)?).as_bytes())
-                        .await?;
+                    shared::protocol::write(&mut socket_tx, &command).await?;
                 }
             }
 
