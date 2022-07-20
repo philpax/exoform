@@ -37,7 +37,7 @@ pub type GraphComponents = (HashMap<NodeId, Node>, Option<NodeId>);
 pub enum GraphCommand {
     AddChild(NodeId, Option<usize>, NodeData),
     RemoveChild(NodeId, NodeId),
-    AddNewParent(NodeId, NodeId, NodeData),
+    AddNewParent(Option<NodeId>, NodeId, NodeData),
 
     ApplyDiff(NodeId, NodeDiff),
 }
@@ -48,6 +48,7 @@ pub enum GraphChange {
     CreateNode(NodeId, Node),
     DeleteNode(NodeId),
     ApplyDiff(NodeId, NodeDiff),
+    SetRootNode(Option<NodeId>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -194,9 +195,14 @@ impl Graph {
                     changes.push(GraphChange::ApplyDiff(*child_id, transform_diff));
                 }
 
-                let parent = self.get_mut(*parent_id)?;
-                let replace_child_diff = parent.replace_child(*child_id, new_parent_id);
-                changes.push(GraphChange::ApplyDiff(*parent_id, replace_child_diff));
+                if let Some(parent_id) = *parent_id {
+                    let parent = self.get_mut(parent_id)?;
+                    let replace_child_diff = parent.replace_child(*child_id, new_parent_id);
+                    changes.push(GraphChange::ApplyDiff(parent_id, replace_child_diff));
+                } else if self.root_node_id == Some(*child_id) {
+                    self.root_node_id = Some(new_parent_id);
+                    changes.push(GraphChange::SetRootNode(self.root_node_id));
+                }
             }
 
             GraphCommand::ApplyDiff(node_id, diff) => {
@@ -240,6 +246,7 @@ impl Graph {
                         .expect("failed to find node to apply change to")
                         .apply(diff.clone());
                 }
+                GraphChange::SetRootNode(root_node) => self.root_node_id = *root_node,
             }
         }
     }

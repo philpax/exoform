@@ -178,25 +178,25 @@ fn render_header(
     if response.clicked_by(egui::PointerButton::Primary) {
         selected_node.select(node_id);
     }
-    if let Some(parent_node_id) = parent_node_id {
-        response.context_menu(|ui| {
-            ui.menu_button("Add Parent", |ui| {
-                if let Some(node_data) = util::render_add_buttons(ui, false) {
-                    commands.push(GraphCommand::AddNewParent(
-                        parent_node_id,
-                        node_id,
-                        node_data,
-                    ));
-                    ui.close_menu();
-                }
-            });
+    response.context_menu(|ui| {
+        ui.menu_button("Add Parent", |ui| {
+            if let Some(node_data) = util::render_add_buttons(ui, false) {
+                commands.push(GraphCommand::AddNewParent(
+                    parent_node_id,
+                    node_id,
+                    node_data,
+                ));
+                ui.close_menu();
+            }
+        });
 
+        if let Some(parent_node_id) = parent_node_id {
             if ui.button("Delete").clicked() {
                 commands.push(GraphCommand::RemoveChild(parent_node_id, node_id));
                 ui.close_menu();
             }
-        });
-    }
+        }
+    });
 
     commands
 }
