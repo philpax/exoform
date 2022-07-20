@@ -191,13 +191,7 @@ fn render_header(
                 }
             });
 
-            if ui
-                .add(util::coloured_button(
-                    "Delete",
-                    egui::Color32::LIGHT_RED.into(),
-                ))
-                .clicked()
-            {
+            if ui.button("Delete").clicked() {
                 commands.push(GraphCommand::RemoveChild(parent_node_id, node_id));
                 ui.close_menu();
             }
