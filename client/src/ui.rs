@@ -96,6 +96,7 @@ fn sdf_code_editor(
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Parameters");
                 ui.checkbox(&mut render_parameters.wireframe, "Wireframe");
+                ui.checkbox(&mut render_parameters.colours, "Colours");
             });
         })
         .response

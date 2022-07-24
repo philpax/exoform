@@ -14,6 +14,7 @@ pub struct Mesh {
 struct CompilationContext<'a> {
     saft_graph: &'a mut saft::Graph,
     exo_graph: &'a Graph,
+    colours_enabled: bool,
 }
 
 pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<Mesh> {
@@ -22,6 +23,7 @@ pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<Mesh> {
         &mut CompilationContext {
             saft_graph: &mut saft_graph,
             exo_graph: graph,
+            colours_enabled,
         },
         graph.root_node_id()?,
     )?;
@@ -53,7 +55,7 @@ fn compile_node(ctx: &mut CompilationContext, node: NodeId) -> Option<saft::Node
         node_id = saft_graph_translate(ctx.saft_graph, node_id, &transform.translation);
     }
 
-    if node.rgb != (1.0, 1.0, 1.0) {
+    if ctx.colours_enabled && node.rgb != (1.0, 1.0, 1.0) {
         node_id = ctx
             .saft_graph
             .op_rgb(node_id, [node.rgb.0, node.rgb.1, node.rgb.2]);

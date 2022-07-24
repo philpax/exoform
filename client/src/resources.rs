@@ -5,6 +5,7 @@ use std::sync::{
 
 pub struct RenderParameters {
     pub wireframe: bool,
+    pub colours: bool,
 }
 
 #[derive(Default)]
