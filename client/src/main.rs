@@ -12,36 +12,8 @@ use tokio::net::TcpStream;
 
 mod camera;
 mod mesh_generation;
+mod resources;
 mod ui;
-
-#[derive(Default)]
-pub struct RenderParameters {
-    pub wireframe: bool,
-}
-
-#[derive(Default)]
-pub struct OccupiedScreenSpace {
-    left: f32,
-    top: f32,
-    right: f32,
-    _bottom: f32,
-}
-
-pub struct NetworkState {
-    shutdown: Arc<AtomicBool>,
-    tx: Arc<Mutex<Vec<shared::GraphCommand>>>,
-    rx: Arc<Mutex<Vec<shared::GraphChange>>>,
-}
-impl NetworkState {
-    pub fn send(&mut self, commands: &[shared::GraphCommand]) {
-        self.tx.lock().unwrap().extend_from_slice(commands);
-    }
-}
-impl Drop for NetworkState {
-    fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::SeqCst);
-    }
-}
 
 #[tokio::main]
 pub async fn main() -> anyhow::Result<()> {
@@ -147,13 +119,9 @@ pub async fn main() -> anyhow::Result<()> {
             title: format!("Exoform {}", env!("CARGO_PKG_VERSION")),
             ..Default::default()
         })
-        .insert_resource(NetworkState {
-            shutdown: shutdown.clone(),
-            tx,
-            rx,
-        })
-        .init_resource::<OccupiedScreenSpace>()
-        .init_resource::<RenderParameters>()
+        .insert_resource(resources::NetworkState::new(shutdown.clone(), tx, rx))
+        .insert_resource(resources::OccupiedScreenSpace::default())
+        .insert_resource(resources::RenderParameters { wireframe: false })
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy::pbr::wireframe::WireframePlugin)
         .add_system(synchronise_network_to_local);
@@ -171,7 +139,10 @@ pub async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn synchronise_network_to_local(mut graph: ResMut<Graph>, network_state: Res<NetworkState>) {
+fn synchronise_network_to_local(
+    mut graph: ResMut<Graph>,
+    network_state: Res<resources::NetworkState>,
+) {
     let changes = &mut network_state.rx.lock().unwrap();
     if !changes.is_empty() {
         graph.apply_changes(changes);

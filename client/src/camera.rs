@@ -1,7 +1,7 @@
 use bevy::{input::mouse::MouseMotion, prelude::*, render::camera::Projection};
 use bevy_egui::EguiContext;
 
-use super::OccupiedScreenSpace;
+use super::resources::OccupiedScreenSpace;
 
 /// Tags an entity as capable of panning and orbiting.
 #[derive(Component)]

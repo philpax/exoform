@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::RenderParameters;
+use crate::resources::RenderParameters;
 
 struct CurrentEntity(Option<Entity>);
 

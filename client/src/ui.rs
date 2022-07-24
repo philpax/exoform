@@ -1,10 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext};
 
-use crate::{NetworkState, RenderParameters};
-
-use super::OccupiedScreenSpace;
-use shared::{Node, *};
+use crate::resources;
+use shared::{Graph, GraphCommand, Node, NodeData, NodeDataDiff, NodeDataMeta, NodeDiff, NodeId};
 
 mod util;
 
@@ -41,9 +39,9 @@ impl Plugin for UiPlugin {
 fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
     mut selected_node: ResMut<SelectedNode>,
-    mut occupied_screen_space: ResMut<OccupiedScreenSpace>,
-    mut render_parameters: ResMut<RenderParameters>,
-    mut network_state: ResMut<NetworkState>,
+    mut occupied_screen_space: ResMut<resources::OccupiedScreenSpace>,
+    mut render_parameters: ResMut<resources::RenderParameters>,
+    mut network_state: ResMut<resources::NetworkState>,
     graph: Res<Graph>,
 ) {
     let ctx = egui_context.ctx_mut();
@@ -263,7 +261,14 @@ fn render_selected_node(ui: &mut egui::Ui, node: &Node, depth: usize) -> Option<
 }
 
 fn render_selected_node_data(ui: &mut egui::Ui, node: &Node) -> Option<NodeDataDiff> {
+    use shared::{
+        BiconvexLens, BiconvexLensDiff, Box, BoxDiff, Capsule, CapsuleDiff, Cone, ConeDiff,
+        Cylinder, CylinderDiff, Intersect, IntersectDiff, Plane, Sphere, SphereDiff, Subtract,
+        SubtractDiff, TaperedCapsule, TaperedCapsuleDiff, Torus, TorusDiff, TorusSector,
+        TorusSectorDiff, Union, UnionDiff,
+    };
     use util::dragger_row as row;
+
     macro_rules! apply_diff {
         ($($diff:tt)*) => {{
             let diff = $($diff)*;
