@@ -119,8 +119,27 @@ pub async fn main() -> anyhow::Result<()> {
     });
 
     let mut app = App::new();
+    #[cfg(target_arch = "wasm32")]
+    let winit_settings = bevy::winit::WinitSettings::desktop_app();
+    #[cfg(not(target_arch = "wasm32"))]
+    let winit_settings = {
+        // Temporary workarond:
+        // https://github.com/bevyengine/bevy/issues/5384
+        use bevy::winit::{UpdateMode, WinitSettings};
+        use std::time::Duration;
+        WinitSettings {
+            focused_mode: UpdateMode::Reactive {
+                max_wait: Duration::from_secs(5),
+            },
+            unfocused_mode: UpdateMode::Reactive {
+                max_wait: Duration::from_secs(5),
+            },
+            ..Default::default()
+        }
+    };
+
     app.insert_resource(Msaa { samples: 4 })
-        .insert_resource(bevy::winit::WinitSettings::desktop_app())
+        .insert_resource(winit_settings)
         .insert_resource(shared::Graph::new_client())
         .insert_resource(WindowDescriptor {
             width: 1600.,
