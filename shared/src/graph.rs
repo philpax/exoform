@@ -36,8 +36,10 @@ pub type GraphComponents = (HashMap<NodeId, Node>, Option<NodeId>);
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GraphCommand {
     AddChild(NodeId, Option<usize>, NodeData),
-    RemoveChild(NodeId, NodeId),
     AddNewParent(Option<NodeId>, NodeId, NodeData),
+    CreateNewRoot(NodeData),
+
+    Remove(NodeId),
 
     ApplyDiff(NodeId, NodeDiff),
 }
@@ -169,11 +171,6 @@ impl Graph {
                 let add_child_diff = self.get_mut(parent_id)?.add_child(index, child_id);
                 changes.push(GraphChange::ApplyDiff(parent_id, add_child_diff));
             }
-            GraphCommand::RemoveChild(parent_id, child_id) => {
-                let parent = self.get_mut(*parent_id)?;
-                let remove_child_diff = parent.remove_child(*child_id);
-                changes.push(GraphChange::ApplyDiff(*parent_id, remove_child_diff));
-            }
             GraphCommand::AddNewParent(parent_id, child_id, node_data) => {
                 assert!(node_data.can_have_children());
 
@@ -202,6 +199,30 @@ impl Graph {
                 } else if self.root_node_id == Some(*child_id) {
                     self.root_node_id = Some(new_parent_id);
                     changes.push(GraphChange::SetRootNode(self.root_node_id));
+                }
+            }
+            GraphCommand::CreateNewRoot(node_data) => {
+                assert!(self.root_node_id.is_none());
+
+                let (node_id, graph_change) = self.add(node_data.clone(), Transform::default());
+                changes.push(graph_change);
+
+                self.root_node_id = Some(node_id);
+                changes.push(GraphChange::SetRootNode(self.root_node_id));
+            }
+
+            GraphCommand::Remove(node_id) => {
+                if self.root_node_id == Some(*node_id) {
+                    self.root_node_id = None;
+                    changes.push(GraphChange::SetRootNode(None));
+                } else {
+                    let parent = self
+                        .nodes
+                        .iter_mut()
+                        .find(|node| node.1.children.contains(&Some(*node_id)))?
+                        .1;
+                    let remove_child_diff = parent.remove_child(*node_id);
+                    changes.push(GraphChange::ApplyDiff(parent.id, remove_child_diff));
                 }
             }
 

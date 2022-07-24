@@ -73,8 +73,8 @@ fn sdf_code_editor(
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
-            if let Some(root_node_id) = graph.root_node_id() {
-                egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                if let Some(root_node_id) = graph.root_node_id() {
                     commands.append(&mut render_egui_tree(
                         ui,
                         &graph,
@@ -83,8 +83,14 @@ fn sdf_code_editor(
                         root_node_id,
                         0,
                     ));
-                });
-            }
+                } else {
+                    let new_child =
+                        util::render_add_button_max_width(ui, util::depth_to_colour(0, false));
+                    if let Some(node_data) = new_child {
+                        commands.push(GraphCommand::CreateNewRoot(node_data));
+                    }
+                }
+            });
         })
         .response
         .rect
@@ -189,11 +195,9 @@ fn render_header(
             }
         });
 
-        if let Some(parent_node_id) = parent_node_id {
-            if ui.button("Delete").clicked() {
-                commands.push(GraphCommand::RemoveChild(parent_node_id, node_id));
-                ui.close_menu();
-            }
+        if ui.button("Delete").clicked() {
+            commands.push(GraphCommand::Remove(node_id));
+            ui.close_menu();
         }
     });
 
