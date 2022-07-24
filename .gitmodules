@@ -1,6 +1,3 @@
-[submodule "crates/bevy_egui"]
-	path = crates/bevy_egui
-	url = git@github.com:philpax/bevy_egui.git
 [submodule "crates/bevy_web_fullscreen"]
 	path = crates/bevy_web_fullscreen
 	url = https://github.com/philpax/bevy_web_fullscreen.git

@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy_egui::egui;
+use glam::{Quat, Vec3};
 use shared::{GraphCommand, NodeData, NodeDataMeta, NodeId, TransformDiff};
 
 pub fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
