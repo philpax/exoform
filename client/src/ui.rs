@@ -74,22 +74,7 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                if let Some(root_node_id) = graph.root_node_id() {
-                    commands.append(&mut render_egui_tree(
-                        ui,
-                        &graph,
-                        &mut selected_node,
-                        None,
-                        root_node_id,
-                        0,
-                    ));
-                } else {
-                    let new_child =
-                        util::render_add_button_max_width(ui, util::depth_to_colour(0, false));
-                    if let Some(node_data) = new_child {
-                        commands.push(GraphCommand::CreateNewRoot(node_data));
-                    }
-                }
+                left_panel(ui, &graph, &mut selected_node, &mut commands);
             });
         })
         .response
@@ -100,9 +85,7 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.heading("Parameters");
-                ui.checkbox(&mut render_parameters.wireframe, "Wireframe");
-                ui.checkbox(&mut render_parameters.colours, "Colours");
+                right_panel(ui, &mut render_parameters);
             });
         })
         .response
@@ -110,6 +93,35 @@ fn sdf_code_editor(
         .width();
 
     network_state.send(&commands);
+}
+
+fn left_panel(
+    ui: &mut egui::Ui,
+    graph: &Graph,
+    selected_node: &mut SelectedNode,
+    commands: &mut Vec<GraphCommand>,
+) {
+    if let Some(root_node_id) = graph.root_node_id() {
+        commands.append(&mut render_egui_tree(
+            ui,
+            &graph,
+            selected_node,
+            None,
+            root_node_id,
+            0,
+        ));
+    } else {
+        let new_child = util::render_add_button_max_width(ui, util::depth_to_colour(0, false));
+        if let Some(node_data) = new_child {
+            commands.push(GraphCommand::CreateNewRoot(node_data));
+        }
+    }
+}
+
+fn right_panel(ui: &mut egui::Ui, render_parameters: &mut resources::RenderParameters) {
+    ui.heading("Parameters");
+    ui.checkbox(&mut render_parameters.wireframe, "Wireframe");
+    ui.checkbox(&mut render_parameters.colours, "Colours");
 }
 
 fn render_egui_tree(
