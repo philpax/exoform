@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::resources::RenderParameters;
+use crate::resources::{MeshGenerationResult, RenderParameters};
 
 struct CurrentEntity(Option<Entity>);
 
@@ -17,31 +17,42 @@ fn keep_rebuilding_mesh(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut current_entity: ResMut<CurrentEntity>,
+    mut mesh_generation_result: ResMut<MeshGenerationResult>,
     render_parameters: Res<RenderParameters>,
     graph: Res<shared::Graph>,
 ) {
-    if render_parameters.is_changed() || graph.is_added() || graph.is_changed() {
-        let raw_mesh = match shared::mesh::generate_mesh(&graph, render_parameters.colours) {
-            Some(m) => m,
-            None => return,
-        };
-        let mesh = convert_to_bevy_mesh(raw_mesh);
-
-        if let Some(entity) = current_entity.0 {
-            commands.entity(entity).despawn();
-        }
-
-        let mut spawn_bundle = commands.spawn_bundle(PbrBundle {
-            mesh: meshes.add(mesh),
-            material: materials.add(Color::WHITE.into()),
-            transform: Transform::from_xyz(0.0, 0.0, 0.0),
-            ..default()
-        });
-        if render_parameters.wireframe {
-            spawn_bundle.insert(bevy::pbr::wireframe::Wireframe);
-        }
-        current_entity.0 = Some(spawn_bundle.id());
+    if !(render_parameters.is_changed() || graph.is_added() || graph.is_changed()) {
+        return;
     }
+    let mesh = match shared::mesh::generate_mesh(&graph, render_parameters.colours) {
+        Some(result) => {
+            *mesh_generation_result = MeshGenerationResult::Successful {
+                exo_node_count: result.exo_node_count,
+                triangle_count: result.triangle_count,
+            };
+            result.mesh
+        }
+        None => {
+            *mesh_generation_result = MeshGenerationResult::Failure;
+            return;
+        }
+    };
+    let mesh = convert_to_bevy_mesh(mesh);
+
+    if let Some(entity) = current_entity.0 {
+        commands.entity(entity).despawn();
+    }
+
+    let mut spawn_bundle = commands.spawn_bundle(PbrBundle {
+        mesh: meshes.add(mesh),
+        material: materials.add(Color::WHITE.into()),
+        transform: Transform::from_xyz(0.0, 0.0, 0.0),
+        ..default()
+    });
+    if render_parameters.wireframe {
+        spawn_bundle.insert(bevy::pbr::wireframe::Wireframe);
+    }
+    current_entity.0 = Some(spawn_bundle.id());
 }
 
 fn convert_to_bevy_mesh(raw_mesh: shared::mesh::Mesh) -> Mesh {

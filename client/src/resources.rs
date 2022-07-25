@@ -8,6 +8,15 @@ pub struct RenderParameters {
     pub colours: bool,
 }
 
+pub enum MeshGenerationResult {
+    Unbuilt,
+    Failure,
+    Successful {
+        exo_node_count: usize,
+        triangle_count: usize,
+    },
+}
+
 #[derive(Default)]
 pub struct OccupiedScreenSpace {
     pub left: f32,
@@ -21,7 +30,6 @@ pub struct NetworkState {
     pub tx: Arc<Mutex<Vec<shared::GraphCommand>>>,
     pub rx: Arc<Mutex<Vec<shared::GraphChange>>>,
 }
-
 impl NetworkState {
     pub fn new(
         shutdown: Arc<AtomicBool>,
@@ -35,7 +43,6 @@ impl NetworkState {
         self.tx.lock().unwrap().extend_from_slice(commands);
     }
 }
-
 impl Drop for NetworkState {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::SeqCst);

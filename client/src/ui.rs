@@ -43,6 +43,7 @@ fn sdf_code_editor(
     mut render_parameters: ResMut<resources::RenderParameters>,
     mut network_state: ResMut<resources::NetworkState>,
     graph: Res<Graph>,
+    mesh_generation_result: Res<resources::MeshGenerationResult>,
 ) {
     let ctx = egui_context.ctx_mut();
     let mut commands = vec![];
@@ -85,7 +86,7 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                right_panel(ui, &mut render_parameters);
+                right_panel(ui, &mut render_parameters, &mesh_generation_result);
             });
         })
         .response
@@ -118,10 +119,32 @@ fn left_panel(
     }
 }
 
-fn right_panel(ui: &mut egui::Ui, render_parameters: &mut resources::RenderParameters) {
+fn right_panel(
+    ui: &mut egui::Ui,
+    render_parameters: &mut resources::RenderParameters,
+    mesh_generation_result: &resources::MeshGenerationResult,
+) {
     ui.heading("Parameters");
     ui.checkbox(&mut render_parameters.wireframe, "Wireframe");
     ui.checkbox(&mut render_parameters.colours, "Colours");
+    match mesh_generation_result {
+        resources::MeshGenerationResult::Unbuilt => {}
+        resources::MeshGenerationResult::Failure => {}
+        resources::MeshGenerationResult::Successful {
+            exo_node_count,
+            triangle_count,
+        } => {
+            ui.heading("Statistics");
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Node count:").strong());
+                ui.label(exo_node_count.to_string());
+            });
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Triangle count:").strong());
+                ui.label(triangle_count.to_string());
+            });
+        }
+    }
 }
 
 fn render_egui_tree(

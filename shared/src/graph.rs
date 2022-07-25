@@ -275,4 +275,18 @@ impl Graph {
     pub fn root_node_id(&self) -> Option<NodeId> {
         self.root_node_id
     }
+
+    pub fn reachable_node_count(&self) -> usize {
+        fn count_children(graph: &Graph, node_id: NodeId) -> usize {
+            let node = graph.get(node_id).unwrap();
+            1 + node
+                .children
+                .iter()
+                .filter_map(|id| Some(count_children(graph, (*id)?)))
+                .sum::<usize>()
+        }
+        self.root_node_id
+            .map(|id| count_children(self, id))
+            .unwrap_or_default()
+    }
 }

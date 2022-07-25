@@ -119,12 +119,13 @@ pub async fn main() -> anyhow::Result<()> {
             title: format!("Exoform {}", env!("CARGO_PKG_VERSION")),
             ..Default::default()
         })
-        .insert_resource(resources::NetworkState::new(shutdown.clone(), tx, rx))
-        .insert_resource(resources::OccupiedScreenSpace::default())
         .insert_resource(resources::RenderParameters {
             wireframe: false,
             colours: true,
         })
+        .insert_resource(resources::MeshGenerationResult::Unbuilt)
+        .insert_resource(resources::OccupiedScreenSpace::default())
+        .insert_resource(resources::NetworkState::new(shutdown.clone(), tx, rx))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy::pbr::wireframe::WireframePlugin)
         .add_system(synchronise_network_to_local);

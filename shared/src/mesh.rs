@@ -11,13 +11,19 @@ pub struct Mesh {
     pub colors: Vec<[f32; 3]>,
 }
 
+pub struct CompilationResult {
+    pub mesh: Mesh,
+    pub exo_node_count: usize,
+    pub triangle_count: usize,
+}
+
 struct CompilationContext<'a> {
     saft_graph: &'a mut saft::Graph,
     exo_graph: &'a Graph,
     colours_enabled: bool,
 }
 
-pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<Mesh> {
+pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<CompilationResult> {
     let mut saft_graph = saft::Graph::default();
     let root_id = compile_node(
         &mut CompilationContext {
@@ -33,11 +39,17 @@ pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<Mesh> {
         return None;
     }
     let mesh = saft::mesh_from_sdf(&saft_graph, root_id, saft::MeshOptions::default()).ok()?;
-    Some(Mesh {
+    let mesh = Mesh {
         indices: mesh.indices,
         positions: mesh.positions,
         normals: mesh.normals,
         colors: mesh.colors,
+    };
+    let triangle_count = mesh.indices.len() / 3;
+    Some(CompilationResult {
+        mesh,
+        exo_node_count: graph.reachable_node_count(),
+        triangle_count,
     })
 }
 
