@@ -14,15 +14,15 @@ pub trait NodeDataMeta {
 
 #[node_type(name = "Sphere", category = NodeCategory::Primitive)]
 pub struct Sphere {
-    #[field(name = "Radius", default = 1.0)]
+    #[field(name = "Radius", default = 0.5)]
     radius: f32,
 }
 
 #[node_type(name = "Cylinder", category = NodeCategory::Primitive)]
 pub struct Cylinder {
-    #[field(name = "Cylinder radius", default = 1.0)]
+    #[field(name = "Cylinder radius", default = 0.5)]
     cylinder_radius: f32,
-    #[field(name = "Half-height", default = 1.0)]
+    #[field(name = "Half-height", default = 0.5)]
     half_height: f32,
     #[field(name = "Rounding radius", default = 0.0)]
     rounding_radius: f32,
@@ -30,7 +30,7 @@ pub struct Cylinder {
 
 #[node_type(name = "Torus", category = NodeCategory::Primitive)]
 pub struct Torus {
-    #[field(name = "Big radius", default = 1.0)]
+    #[field(name = "Big radius", default = 0.5)]
     big_r: f32,
     #[field(name = "Small radius", default = 0.1)]
     small_r: f32,
@@ -47,29 +47,29 @@ pub struct Plane {
 
 #[node_type(name = "Capsule", category = NodeCategory::Primitive)]
 pub struct Capsule {
-    #[field(name = "Point 1", default = glam::const_vec3!([0.0, 0.0, 0.0]))]
+    #[field(name = "Point 1", default = glam::const_vec3!([0.0, -0.5, 0.0]))]
     point_1: Vec3,
-    #[field(name = "Point 2", default = glam::const_vec3!([0.0, 1.0, 0.0]))]
+    #[field(name = "Point 2", default = glam::const_vec3!([0.0, 0.5, 0.0]))]
     point_2: Vec3,
-    #[field(name = "Radius", default = 1.0)]
+    #[field(name = "Radius", default = 0.5)]
     radius: f32,
 }
 
 #[node_type(name = "Tapered Capsule", category = NodeCategory::Primitive)]
 pub struct TaperedCapsule {
-    #[field(name = "Point 1", default = glam::const_vec3!([0.0, 0.0, 0.0]))]
+    #[field(name = "Point 1", default = glam::const_vec3!([0.0, -0.5, 0.0]))]
     point_1: Vec3,
-    #[field(name = "Point 2", default = glam::const_vec3!([0.0, 1.0, 0.0]))]
+    #[field(name = "Point 2", default = glam::const_vec3!([0.0, 0.5, 0.0]))]
     point_2: Vec3,
-    #[field(name = "Radius 1", default = 1.0)]
+    #[field(name = "Radius 1", default = 0.5)]
     radius_1: f32,
-    #[field(name = "Radius 2", default = 1.0)]
+    #[field(name = "Radius 2", default = 0.5)]
     radius_2: f32,
 }
 
 #[node_type(name = "Cone", category = NodeCategory::Primitive)]
 pub struct Cone {
-    #[field(name = "Radius", default = 1.0)]
+    #[field(name = "Radius", default = 0.5)]
     radius: f32,
     #[field(name = "Height", default = 1.0)]
     height: f32,
@@ -85,7 +85,7 @@ pub struct Box {
 
 #[node_type(name = "Torus Sector", category = NodeCategory::Primitive)]
 pub struct TorusSector {
-    #[field(name = "Big radius", default = 1.0)]
+    #[field(name = "Big radius", default = 0.5)]
     big_r: f32,
     #[field(name = "Small radius", default = 0.1)]
     small_r: f32,
@@ -99,7 +99,7 @@ pub struct BiconvexLens {
     lower_sagitta: f32,
     #[field(name = "Upper sagitta", default = 0.5)]
     upper_sagitta: f32,
-    #[field(name = "Chord", default = 0.5)]
+    #[field(name = "Chord", default = 1.0)]
     chord: f32,
 }
 
