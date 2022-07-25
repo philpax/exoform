@@ -33,6 +33,10 @@ pub enum CompilationError {
     InfiniteBounds,
     #[error("a node has no children")]
     NoChildren,
+    #[error("a node has negative scale")]
+    NegativeScale,
+    #[error("a node has negative size")]
+    NegativeSize,
 }
 pub type Result<T> = core::result::Result<T, CompilationError>;
 
@@ -80,6 +84,9 @@ fn compile_node(ctx: &mut CompilationContext, node: NodeId) -> Result<saft::Node
     let node = ctx.exo_graph.get(node).unwrap();
     let mut node_id = compile_node_data(ctx, &node.data, &node.children)?;
     let transform = &node.transform;
+    if transform.scale < 0.0 {
+        return Err(CompilationError::NegativeScale);
+    }
     if transform.scale != 1.0 {
         node_id = ctx.saft_graph.op_scale(node_id, transform.scale);
     }
@@ -99,21 +106,35 @@ fn compile_node(ctx: &mut CompilationContext, node: NodeId) -> Result<saft::Node
     Ok(node_id)
 }
 
+fn validate_size(size: &f32) -> Result<f32> {
+    if *size >= 0.0 {
+        Ok(*size)
+    } else {
+        Err(CompilationError::NegativeSize)
+    }
+}
+
 fn compile_node_data(
     ctx: &mut CompilationContext,
     node_data: &NodeData,
     children: &[Option<NodeId>],
 ) -> Result<saft::NodeId> {
     match node_data {
-        NodeData::Sphere(Sphere { radius }) => Ok(ctx.saft_graph.sphere(glam::Vec3::ZERO, *radius)),
+        NodeData::Sphere(Sphere { radius }) => Ok(ctx
+            .saft_graph
+            .sphere(glam::Vec3::ZERO, validate_size(radius)?)),
         NodeData::Cylinder(Cylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
-        }) => Ok(ctx
+        }) => Ok(ctx.saft_graph.rounded_cylinder(
+            validate_size(cylinder_radius)?,
+            validate_size(half_height)?,
+            validate_size(rounding_radius)?,
+        )),
+        NodeData::Torus(Torus { big_r, small_r }) => Ok(ctx
             .saft_graph
-            .rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
-        NodeData::Torus(Torus { big_r, small_r }) => Ok(ctx.saft_graph.torus(*big_r, *small_r)),
+            .torus(validate_size(big_r)?, validate_size(small_r)?)),
         NodeData::Plane(Plane {
             normal,
             distance_from_origin,
@@ -124,32 +145,45 @@ fn compile_node_data(
             point_1,
             point_2,
             radius,
-        }) => Ok(ctx.saft_graph.capsule([*point_1, *point_2], *radius)),
+        }) => Ok(ctx
+            .saft_graph
+            .capsule([*point_1, *point_2], validate_size(radius)?)),
         NodeData::TaperedCapsule(TaperedCapsule {
             point_1,
             point_2,
             radius_1,
             radius_2,
-        }) => Ok(ctx
+        }) => Ok(ctx.saft_graph.tapered_capsule(
+            [*point_1, *point_2],
+            [validate_size(radius_1)?, validate_size(radius_2)?],
+        )),
+        NodeData::Cone(Cone { radius, height }) => Ok(ctx
             .saft_graph
-            .tapered_capsule([*point_1, *point_2], [*radius_1, *radius_2])),
-        NodeData::Cone(Cone { radius, height }) => Ok(ctx.saft_graph.cone(*radius, *height)),
+            .cone(validate_size(radius)?, validate_size(height)?)),
         NodeData::Box(Box {
             half_size,
             rounding_radius,
-        }) => Ok(ctx.saft_graph.rounded_box(*half_size, *rounding_radius)),
+        }) => Ok(ctx
+            .saft_graph
+            .rounded_box(half_size.abs(), validate_size(rounding_radius)?)),
         NodeData::TorusSector(TorusSector {
             big_r,
             small_r,
             angle,
-        }) => Ok(ctx.saft_graph.torus_sector(*big_r, *small_r, angle / 2.0)),
+        }) => Ok(ctx.saft_graph.torus_sector(
+            validate_size(big_r)?,
+            validate_size(small_r)?,
+            angle / 2.0,
+        )),
         NodeData::BiconvexLens(BiconvexLens {
             lower_sagitta,
             upper_sagitta,
             chord,
-        }) => Ok(ctx
-            .saft_graph
-            .biconvex_lens(*lower_sagitta, *upper_sagitta, *chord)),
+        }) => Ok(ctx.saft_graph.biconvex_lens(
+            validate_size(lower_sagitta)?,
+            validate_size(upper_sagitta)?,
+            validate_size(chord)?,
+        )),
 
         NodeData::Union(Union { factor }) => {
             let nodes = compile_nodes(ctx, children)?;
