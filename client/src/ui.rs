@@ -71,6 +71,24 @@ fn sdf_code_editor(
         .rect
         .height();
 
+    occupied_screen_space.bottom = egui::TopBottomPanel::bottom("bottom_panel")
+        .show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                use resources::MeshGenerationResult as mgr;
+                let text = match mesh_generation_result.as_ref() {
+                    mgr::Unbuilt => "Mesh not built".to_string(),
+                    mgr::Failure(err) => format!("Error: {}", err.to_string()),
+                    mgr::Successful { triangle_count, .. } => {
+                        format!("Success! {} triangles", triangle_count)
+                    }
+                };
+                ui.label(text);
+            });
+        })
+        .response
+        .rect
+        .height();
+
     occupied_screen_space.left = egui::SidePanel::left("left_panel")
         .default_width(400.0)
         .show(ctx, |ui| {
@@ -129,7 +147,7 @@ fn right_panel(
     ui.checkbox(&mut render_parameters.colours, "Colours");
     match mesh_generation_result {
         resources::MeshGenerationResult::Unbuilt => {}
-        resources::MeshGenerationResult::Failure => {}
+        resources::MeshGenerationResult::Failure(_) => {}
         resources::MeshGenerationResult::Successful {
             exo_node_count,
             triangle_count,

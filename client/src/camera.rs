@@ -137,7 +137,7 @@ pub(crate) fn pan_orbit_camera(
         let left_taken = occupied_screen_space.left / window.width();
         let right_taken = occupied_screen_space.right / window.width();
         let top_taken = occupied_screen_space.top / window.height();
-        let bottom_taken = occupied_screen_space._bottom / window.height();
+        let bottom_taken = occupied_screen_space.bottom / window.height();
         let offset = transform.rotation.mul_vec3(Vec3::new(
             (right_taken - left_taken) * frustum_width * 0.5,
             (top_taken - bottom_taken) * frustum_height * 0.5,

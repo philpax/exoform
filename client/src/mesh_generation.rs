@@ -25,15 +25,15 @@ fn keep_rebuilding_mesh(
         return;
     }
     let mesh = match shared::mesh::generate_mesh(&graph, render_parameters.colours) {
-        Some(result) => {
+        Ok(result) => {
             *mesh_generation_result = MeshGenerationResult::Successful {
                 exo_node_count: result.exo_node_count,
                 triangle_count: result.triangle_count,
             };
             result.mesh
         }
-        None => {
-            *mesh_generation_result = MeshGenerationResult::Failure;
+        Err(err) => {
+            *mesh_generation_result = MeshGenerationResult::Failure(err);
             return;
         }
     };

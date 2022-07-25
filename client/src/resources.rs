@@ -10,7 +10,7 @@ pub struct RenderParameters {
 
 pub enum MeshGenerationResult {
     Unbuilt,
-    Failure,
+    Failure(shared::mesh::CompilationError),
     Successful {
         exo_node_count: usize,
         triangle_count: usize,
@@ -22,7 +22,7 @@ pub struct OccupiedScreenSpace {
     pub left: f32,
     pub top: f32,
     pub right: f32,
-    pub _bottom: f32,
+    pub bottom: f32,
 }
 
 pub struct NetworkState {

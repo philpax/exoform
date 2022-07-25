@@ -12,4 +12,5 @@ derive-macros = {path = "../crates/derive-macros"}
 glam = "0.20.5"
 saft = "0.30.0"
 serde = {version = "1.0", features = ["derive"]}
+thiserror = "1.0.31"
 tokio = {version = "1.20.0", features = ["full"]}

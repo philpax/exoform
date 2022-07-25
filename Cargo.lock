@@ -3132,6 +3132,7 @@ dependencies = [
  "glam 0.20.5",
  "saft",
  "serde",
+ "thiserror",
  "tokio",
 ]
 

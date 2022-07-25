@@ -1,7 +1,10 @@
 use glam::{Quat, Vec3};
+use thiserror::Error;
 
-use crate::node_data::*;
-use crate::{Graph, NodeId};
+use crate::{
+    node_data::*,
+    {Graph, NodeId},
+};
 
 #[derive(Clone, Default)]
 pub struct Mesh {
@@ -11,11 +14,26 @@ pub struct Mesh {
     pub colors: Vec<[f32; 3]>,
 }
 
-pub struct CompilationResult {
+pub struct CompilationOutput {
     pub mesh: Mesh,
     pub exo_node_count: usize,
     pub triangle_count: usize,
 }
+
+#[derive(Error, Debug)]
+pub enum CompilationError {
+    #[error("the mesh generation backend encountered an error")]
+    SaftError(#[from] saft::Error),
+    #[error("no root node in the graph")]
+    NoRootNode,
+    #[error("the mesh has no volume")]
+    NoVolume,
+    #[error("the mesh has infinite bounds")]
+    InfiniteBounds,
+    #[error("a node has no children")]
+    NoChildren,
+}
+pub type Result<T> = core::result::Result<T, CompilationError>;
 
 struct CompilationContext<'a> {
     saft_graph: &'a mut saft::Graph,
@@ -23,7 +41,7 @@ struct CompilationContext<'a> {
     colours_enabled: bool,
 }
 
-pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<CompilationResult> {
+pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Result<CompilationOutput> {
     let mut saft_graph = saft::Graph::default();
     let root_id = compile_node(
         &mut CompilationContext {
@@ -31,14 +49,17 @@ pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<Compilation
             exo_graph: graph,
             colours_enabled,
         },
-        graph.root_node_id()?,
+        graph.root_node_id().ok_or(CompilationError::NoRootNode)?,
     )?;
 
     let bounding_box = saft_graph.bounding_box(root_id);
-    if bounding_box.volume() == 0.0 || !bounding_box.is_finite() {
-        return None;
+    if bounding_box.volume() == 0.0 {
+        return Err(CompilationError::NoVolume);
     }
-    let mesh = saft::mesh_from_sdf(&saft_graph, root_id, saft::MeshOptions::default()).ok()?;
+    if !bounding_box.is_finite() {
+        return Err(CompilationError::InfiniteBounds);
+    }
+    let mesh = saft::mesh_from_sdf(&saft_graph, root_id, saft::MeshOptions::default())?;
     let mesh = Mesh {
         indices: mesh.indices,
         positions: mesh.positions,
@@ -46,14 +67,14 @@ pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Option<Compilation
         colors: mesh.colors,
     };
     let triangle_count = mesh.indices.len() / 3;
-    Some(CompilationResult {
+    Ok(CompilationOutput {
         mesh,
         exo_node_count: graph.reachable_node_count(),
         triangle_count,
     })
 }
 
-fn compile_node(ctx: &mut CompilationContext, node: NodeId) -> Option<saft::NodeId> {
+fn compile_node(ctx: &mut CompilationContext, node: NodeId) -> Result<saft::NodeId> {
     let node = ctx.exo_graph.get(node).unwrap();
     let mut node_id = compile_node_data(ctx, &node.data, &node.children)?;
     let transform = &node.transform;
@@ -73,88 +94,81 @@ fn compile_node(ctx: &mut CompilationContext, node: NodeId) -> Option<saft::Node
             .op_rgb(node_id, [node.rgb.0, node.rgb.1, node.rgb.2]);
     }
 
-    Some(node_id)
+    Ok(node_id)
 }
 
 fn compile_node_data(
     ctx: &mut CompilationContext,
     node_data: &NodeData,
     children: &[Option<NodeId>],
-) -> Option<saft::NodeId> {
+) -> Result<saft::NodeId> {
     match node_data {
-        NodeData::Sphere(Sphere { radius }) => {
-            Some(ctx.saft_graph.sphere(glam::Vec3::ZERO, *radius))
-        }
+        NodeData::Sphere(Sphere { radius }) => Ok(ctx.saft_graph.sphere(glam::Vec3::ZERO, *radius)),
         NodeData::Cylinder(Cylinder {
             cylinder_radius,
             half_height,
             rounding_radius,
-        }) => Some(ctx.saft_graph.rounded_cylinder(
-            *cylinder_radius,
-            *half_height,
-            *rounding_radius,
-        )),
-        NodeData::Torus(Torus { big_r, small_r }) => Some(ctx.saft_graph.torus(*big_r, *small_r)),
+        }) => Ok(ctx
+            .saft_graph
+            .rounded_cylinder(*cylinder_radius, *half_height, *rounding_radius)),
+        NodeData::Torus(Torus { big_r, small_r }) => Ok(ctx.saft_graph.torus(*big_r, *small_r)),
         NodeData::Plane(Plane {
             normal,
             distance_from_origin,
-        }) => Some(
-            ctx.saft_graph
-                .plane((*normal, *distance_from_origin).into()),
-        ),
+        }) => Ok(ctx
+            .saft_graph
+            .plane((*normal, *distance_from_origin).into())),
         NodeData::Capsule(Capsule {
             point_1,
             point_2,
             radius,
-        }) => Some(ctx.saft_graph.capsule([*point_1, *point_2], *radius)),
+        }) => Ok(ctx.saft_graph.capsule([*point_1, *point_2], *radius)),
         NodeData::TaperedCapsule(TaperedCapsule {
             point_1,
             point_2,
             radius_1,
             radius_2,
-        }) => Some(
-            ctx.saft_graph
-                .tapered_capsule([*point_1, *point_2], [*radius_1, *radius_2]),
-        ),
-        NodeData::Cone(Cone { radius, height }) => Some(ctx.saft_graph.cone(*radius, *height)),
+        }) => Ok(ctx
+            .saft_graph
+            .tapered_capsule([*point_1, *point_2], [*radius_1, *radius_2])),
+        NodeData::Cone(Cone { radius, height }) => Ok(ctx.saft_graph.cone(*radius, *height)),
         NodeData::Box(Box {
             half_size,
             rounding_radius,
-        }) => Some(ctx.saft_graph.rounded_box(*half_size, *rounding_radius)),
+        }) => Ok(ctx.saft_graph.rounded_box(*half_size, *rounding_radius)),
         NodeData::TorusSector(TorusSector {
             big_r,
             small_r,
             angle,
-        }) => Some(ctx.saft_graph.torus_sector(*big_r, *small_r, angle / 2.0)),
+        }) => Ok(ctx.saft_graph.torus_sector(*big_r, *small_r, angle / 2.0)),
         NodeData::BiconvexLens(BiconvexLens {
             lower_sagitta,
             upper_sagitta,
             chord,
-        }) => Some(
-            ctx.saft_graph
-                .biconvex_lens(*lower_sagitta, *upper_sagitta, *chord),
-        ),
+        }) => Ok(ctx
+            .saft_graph
+            .biconvex_lens(*lower_sagitta, *upper_sagitta, *chord)),
 
         NodeData::Union(Union { factor }) => {
-            let nodes = compile_nodes(ctx, children);
+            let nodes = compile_nodes(ctx, children)?;
             let is_unsmoothed = *factor == 0.0;
             if nodes.is_empty() {
-                None
+                Err(CompilationError::NoChildren)
             } else if nodes.len() == 2 {
                 let (lhs, rhs) = (nodes[0], nodes[1]);
                 if is_unsmoothed {
-                    Some(ctx.saft_graph.op_union(lhs, rhs))
+                    Ok(ctx.saft_graph.op_union(lhs, rhs))
                 } else {
-                    Some(ctx.saft_graph.op_union_smooth(lhs, rhs, *factor))
+                    Ok(ctx.saft_graph.op_union_smooth(lhs, rhs, *factor))
                 }
             } else if is_unsmoothed {
-                Some(ctx.saft_graph.op_union_multi(nodes))
+                Ok(ctx.saft_graph.op_union_multi(nodes))
             } else {
-                Some(ctx.saft_graph.op_union_multi_smooth(nodes, *factor))
+                Ok(ctx.saft_graph.op_union_multi_smooth(nodes, *factor))
             }
         }
         NodeData::Intersect(Intersect { factor }) => {
-            let nodes = compile_nodes(ctx, children);
+            let nodes = compile_nodes(ctx, children)?;
             apply_infix_operation_over_array(&nodes, |lhs, rhs| {
                 if *factor == 0.0 {
                     ctx.saft_graph.op_intersect(lhs, rhs)
@@ -164,7 +178,7 @@ fn compile_node_data(
             })
         }
         NodeData::Subtract(Subtract { factor }) => {
-            let nodes = compile_nodes(ctx, children);
+            let nodes = compile_nodes(ctx, children)?;
             apply_infix_operation_over_array(&nodes, |lhs, rhs| {
                 if *factor == 0.0 {
                     ctx.saft_graph.op_subtract(lhs, rhs)
@@ -179,24 +193,28 @@ fn compile_node_data(
 fn apply_infix_operation_over_array(
     nodes: &[saft::NodeId],
     mut operation: impl FnMut(saft::NodeId, saft::NodeId) -> saft::NodeId,
-) -> Option<saft::NodeId> {
+) -> Result<saft::NodeId> {
     if nodes.is_empty() {
-        None
+        Err(CompilationError::NoChildren)
     } else if nodes.len() == 1 {
-        Some(nodes[0])
+        Ok(nodes[0])
     } else {
         let mut new_node_id = nodes[0];
         for rhs in &nodes[1..] {
             new_node_id = operation(new_node_id, *rhs);
         }
-        Some(new_node_id)
+        Ok(new_node_id)
     }
 }
 
-fn compile_nodes(ctx: &mut CompilationContext, nodes: &[Option<NodeId>]) -> Vec<saft::NodeId> {
+fn compile_nodes(
+    ctx: &mut CompilationContext,
+    nodes: &[Option<NodeId>],
+) -> Result<Vec<saft::NodeId>> {
     nodes
         .iter()
-        .filter_map(|id| compile_node(ctx, (*id)?))
+        .filter_map(|id| *id)
+        .map(|id| compile_node(ctx, id))
         .collect()
 }
 
