@@ -151,6 +151,7 @@ fn right_panel(
         resources::MeshGenerationResult::Successful {
             exo_node_count,
             triangle_count,
+            volume,
         } => {
             ui.heading("Statistics");
             ui.horizontal(|ui| {
@@ -160,6 +161,10 @@ fn right_panel(
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Triangle count:").strong());
                 ui.label(triangle_count.to_string());
+            });
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Volume:").strong());
+                ui.label(volume.to_string());
             });
         }
     }

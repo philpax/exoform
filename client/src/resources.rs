@@ -14,6 +14,7 @@ pub enum MeshGenerationResult {
     Successful {
         exo_node_count: usize,
         triangle_count: usize,
+        volume: f32,
     },
 }
 

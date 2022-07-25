@@ -29,6 +29,7 @@ fn keep_rebuilding_mesh(
             *mesh_generation_result = MeshGenerationResult::Successful {
                 exo_node_count: result.exo_node_count,
                 triangle_count: result.triangle_count,
+                volume: result.volume,
             };
             result.mesh
         }
