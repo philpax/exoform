@@ -3,6 +3,7 @@ use std::sync::{
     Arc, Mutex,
 };
 
+#[derive(Clone, PartialEq, Eq)]
 pub struct RenderParameters {
     pub wireframe: bool,
     pub colours: bool,

@@ -24,6 +24,11 @@ fn keep_rebuilding_mesh(
     if !(render_parameters.is_changed() || graph.is_added() || graph.is_changed()) {
         return;
     }
+
+    if let Some(entity) = current_entity.0.take() {
+        commands.entity(entity).despawn();
+    }
+
     let mesh = match shared::mesh::generate_mesh(&graph, render_parameters.colours) {
         Ok(result) => {
             *mesh_generation_result = MeshGenerationResult::Successful {
@@ -39,10 +44,6 @@ fn keep_rebuilding_mesh(
         }
     };
     let mesh = convert_to_bevy_mesh(mesh);
-
-    if let Some(entity) = current_entity.0 {
-        commands.entity(entity).despawn();
-    }
 
     let mut spawn_bundle = commands.spawn_bundle(PbrBundle {
         mesh: meshes.add(mesh),

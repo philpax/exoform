@@ -40,8 +40,8 @@ fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
     mut selected_node: ResMut<SelectedNode>,
     mut occupied_screen_space: ResMut<resources::OccupiedScreenSpace>,
-    mut render_parameters: ResMut<resources::RenderParameters>,
     mut network_state: ResMut<resources::NetworkState>,
+    render_parameters: ResMut<resources::RenderParameters>,
     graph: Res<Graph>,
     mesh_generation_result: Res<resources::MeshGenerationResult>,
 ) {
@@ -104,7 +104,7 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                right_panel(ui, &mut render_parameters, &mesh_generation_result);
+                right_panel(ui, render_parameters, &mesh_generation_result);
             });
         })
         .response
@@ -139,12 +139,16 @@ fn left_panel(
 
 fn right_panel(
     ui: &mut egui::Ui,
-    render_parameters: &mut resources::RenderParameters,
+    mut render_parameters: ResMut<resources::RenderParameters>,
     mesh_generation_result: &resources::MeshGenerationResult,
 ) {
+    let mut rp = render_parameters.clone();
     ui.heading("Parameters");
-    ui.checkbox(&mut render_parameters.wireframe, "Wireframe");
-    ui.checkbox(&mut render_parameters.colours, "Colours");
+    ui.checkbox(&mut rp.wireframe, "Wireframe");
+    ui.checkbox(&mut rp.colours, "Colours");
+    if render_parameters.as_ref() != &rp {
+        *render_parameters = rp;
+    }
     match mesh_generation_result {
         resources::MeshGenerationResult::Unbuilt => {}
         resources::MeshGenerationResult::Failure(_) => {}
