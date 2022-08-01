@@ -1,11 +1,223 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::{collections::HashMap, net::SocketAddr};
 
 use clap::Parser;
-use shared::{Graph, GraphChange, NodeData};
-use tokio::{net, sync};
+use shared::{protocol::Message, Graph, GraphChange, GraphCommand};
+use tokio::{net, sync::mpsc, task::JoinHandle};
+
+struct Peer {
+    address: SocketAddr,
+    receiver: mpsc::Receiver<PeerMessage>,
+    _read_task: JoinHandle<anyhow::Result<()>>,
+    _write_task: JoinHandle<anyhow::Result<()>>,
+    write_sender: mpsc::Sender<Message>,
+    coordinator: CoordinatorHandle,
+}
+#[derive(Debug, Clone)]
+enum PeerMessage {
+    Disconnect,
+    GraphCommand(GraphCommand),
+    GraphChange(GraphChange),
+}
+impl Peer {
+    fn new(
+        address: SocketAddr,
+        receiver: mpsc::Receiver<PeerMessage>,
+        read_task: JoinHandle<anyhow::Result<()>>,
+        write_task: JoinHandle<anyhow::Result<()>>,
+        write_sender: mpsc::Sender<Message>,
+        coordinator: CoordinatorHandle,
+    ) -> Self {
+        Peer {
+            address,
+            receiver,
+            _read_task: read_task,
+            _write_task: write_task,
+            write_sender,
+            coordinator,
+        }
+    }
+    async fn handle_message(&mut self, msg: PeerMessage) -> anyhow::Result<()> {
+        match msg {
+            PeerMessage::Disconnect => {
+                self.coordinator
+                    .0
+                    .send(CoordinatorMessage::PeerLeave(self.address))
+                    .await?
+            }
+            PeerMessage::GraphCommand(gc) => {
+                self.coordinator
+                    .0
+                    .send(CoordinatorMessage::GraphCommand(gc))
+                    .await?;
+            }
+            PeerMessage::GraphChange(gc) => {
+                self.write_sender.send(Message::GraphChange(gc)).await?;
+            }
+        }
+        Ok(())
+    }
+    async fn run(&mut self) {
+        while let Some(msg) = self.receiver.recv().await {
+            self.handle_message(msg).await.unwrap();
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct PeerHandle(mpsc::Sender<PeerMessage>);
+impl PeerHandle {
+    pub fn new(
+        coordinator: CoordinatorHandle,
+        stream: net::TcpStream,
+        address: SocketAddr,
+    ) -> Self {
+        let (sender, receiver) = mpsc::channel(8);
+
+        let (mut read, mut write) = stream.into_split();
+        let read_task = tokio::spawn({
+            let sender = sender.clone();
+            async move {
+                loop {
+                    let message = match shared::protocol::read(&mut read).await {
+                        Some(Ok(Message::GraphCommand(cmd))) => cmd,
+                        Some(Ok(msg)) => anyhow::bail!("unexpected message: {msg:?}"),
+                        Some(Err(err)) => return Err(err),
+                        None => {
+                            sender.send(PeerMessage::Disconnect).await?;
+                            break;
+                        }
+                    };
+                    sender.send(PeerMessage::GraphCommand(message)).await?;
+                }
+
+                anyhow::Ok(())
+            }
+        });
+
+        let (write_sender, mut write_receiver) = mpsc::channel(8);
+        let write_task = tokio::spawn(async move {
+            while let Some(message) = write_receiver.recv().await {
+                shared::protocol::write(&mut write, message).await?;
+            }
+
+            anyhow::Ok(())
+        });
+
+        let mut peer = Peer::new(
+            address,
+            receiver,
+            read_task,
+            write_task,
+            write_sender,
+            coordinator,
+        );
+        tokio::spawn(async move { peer.run().await });
+
+        Self(sender)
+    }
+}
+
+pub struct Coordinator {
+    peers: HashMap<SocketAddr, PeerHandle>,
+    receiver: mpsc::Receiver<CoordinatorMessage>,
+    _listener_task: JoinHandle<anyhow::Result<()>>,
+    _save_kicker_task: JoinHandle<Result<(), anyhow::Error>>,
+    graph: Graph,
+}
+pub struct CoordinatorHandle(mpsc::Sender<CoordinatorMessage>);
+#[derive(Debug, Clone)]
+pub enum CoordinatorMessage {
+    PeerJoin(SocketAddr, PeerHandle),
+    PeerLeave(SocketAddr),
+    GraphCommand(GraphCommand),
+    Save(String),
+}
+impl Coordinator {
+    async fn new(host: &str, port: u16, filename: String) -> anyhow::Result<Self> {
+        let (sender, receiver) = mpsc::channel(8);
+
+        let listener_task = tokio::spawn({
+            let sender = sender.clone();
+            let host = host.to_owned();
+            async move {
+                let listener = net::TcpListener::bind((host, port)).await?;
+                loop {
+                    let (stream, address) = listener.accept().await?;
+                    let peer = PeerHandle::new(CoordinatorHandle(sender.clone()), stream, address);
+                    sender
+                        .send(CoordinatorMessage::PeerJoin(address, peer))
+                        .await?;
+                }
+
+                #[allow(unreachable_code)]
+                anyhow::Ok(())
+            }
+        });
+
+        let graph = match tokio::fs::read_to_string(&filename).await {
+            Ok(contents) => serde_json::from_str(&contents)?,
+            _ => Graph::new_authoritative(),
+        };
+
+        let save_kicker_task = tokio::spawn({
+            let sender = sender.clone();
+            async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    sender
+                        .send(CoordinatorMessage::Save(filename.clone()))
+                        .await?;
+                }
+
+                #[allow(unreachable_code)]
+                anyhow::Ok(())
+            }
+        });
+
+        Ok(Self {
+            peers: HashMap::new(),
+            receiver,
+            _listener_task: listener_task,
+            _save_kicker_task: save_kicker_task,
+            graph,
+        })
+    }
+
+    async fn run(&mut self) -> anyhow::Result<()> {
+        while let Some(msg) = self.receiver.recv().await {
+            match msg {
+                CoordinatorMessage::PeerJoin(addr, peer) => {
+                    peer.0
+                        .send(PeerMessage::GraphChange(GraphChange::Initialize(
+                            self.graph.to_components(),
+                        )))
+                        .await?;
+                    self.peers.insert(addr, peer);
+                    println!("{addr:?}: joined");
+                }
+                CoordinatorMessage::PeerLeave(addr) => {
+                    self.peers.remove(&addr);
+                    println!("{addr:?}: left");
+                }
+                CoordinatorMessage::GraphCommand(gc) => {
+                    let changes = self.graph.apply_commands(&[gc]);
+                    for change in changes {
+                        for peer in self.peers.values() {
+                            peer.0
+                                .send(PeerMessage::GraphChange(change.clone()))
+                                .await?;
+                        }
+                    }
+                }
+                CoordinatorMessage::Save(filename) => {
+                    tokio::fs::write(filename, serde_json::to_string_pretty(&self.graph)?).await?;
+                }
+            }
+        }
+
+        anyhow::Ok(())
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,116 +235,8 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
-    let (command_tx, mut command_rx) = sync::mpsc::channel(128);
-
-    let graph = match tokio::fs::read_to_string(&args.filename).await {
-        Ok(contents) => serde_json::from_str(&contents)?,
-        _ => Graph::new_authoritative(NodeData::Union(Default::default())),
-    };
-    let graph = Arc::new(Mutex::new(graph));
-    let (graph_tx, graph_rx) = sync::watch::channel(vec![]);
-    let _graph_broadcast_task = tokio::spawn({
-        let graph = graph.clone();
-        async move {
-            while let Some(command) = command_rx.recv().await {
-                if let Ok(mut graph) = graph.lock() {
-                    graph_tx.send(graph.apply_commands(&[command]))?;
-                }
-            }
-
-            anyhow::Ok(())
-        }
-    });
-    let _graph_save_task = tokio::spawn({
-        let graph = graph.clone();
-        let filename = args.filename.clone();
-        async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-
-                let contents = match graph.lock() {
-                    Ok(graph) => serde_json::to_string_pretty(&*graph)?,
-                    _ => continue,
-                };
-                tokio::fs::write(&filename, contents).await?;
-            }
-
-            #[allow(unreachable_code)]
-            anyhow::Ok(())
-        }
-    });
-
-    let listener = net::TcpListener::bind((args.host.as_ref(), port)).await?;
-    println!("Listening on {}:{}", args.host, port);
-
-    loop {
-        let (socket, peer_addr) = listener.accept().await?;
-
-        handle_peer(
-            socket,
-            peer_addr,
-            command_tx.clone(),
-            graph_rx.clone(),
-            graph.clone(),
-        )
-        .await?;
-    }
-}
-
-async fn handle_peer(
-    socket: net::TcpStream,
-    peer_addr: std::net::SocketAddr,
-    command_tx: sync::mpsc::Sender<shared::GraphCommand>,
-    mut graph_rx: sync::watch::Receiver<Vec<GraphChange>>,
-    graph: Arc<Mutex<Graph>>,
-) -> anyhow::Result<()> {
-    let (mut read, mut write) = socket.into_split();
-
-    let connected = Arc::new(AtomicBool::new(true));
-    println!("{}: new connection", peer_addr);
-
-    if graph_rx.has_changed()? {
-        // clear the change flag if necessary - we're about to initialise this peer
-        graph_rx.changed().await?;
-    }
-    let components = graph.lock().unwrap().to_components();
-    shared::protocol::write(&mut write, GraphChange::Initialize(components).into()).await?;
-
-    let _peer_read_task = tokio::spawn({
-        let connected = connected.clone();
-        async move {
-            loop {
-                use shared::protocol::Message;
-
-                let message = match shared::protocol::read(&mut read).await {
-                    Some(Ok(Message::GraphCommand(cmd))) => cmd,
-                    Some(Ok(msg)) => panic!("unexpected message: {msg:?}"),
-                    Some(Err(err)) => return Err(err),
-                    None => break,
-                };
-                command_tx.send(message).await?;
-            }
-
-            println!("{}: disconnected", peer_addr);
-            connected.store(false, Ordering::SeqCst);
-
-            anyhow::Ok(())
-        }
-    });
-
-    let _peer_write_task = tokio::spawn({
-        async move {
-            while connected.load(Ordering::SeqCst) {
-                graph_rx.changed().await?;
-                let payload = graph_rx.borrow().to_owned();
-                for change in payload {
-                    shared::protocol::write(&mut write, change.into()).await?;
-                }
-            }
-            anyhow::Ok(())
-        }
-    });
+    let mut coordinator = Coordinator::new(&args.host, port, args.filename).await?;
+    coordinator.run().await?;
 
     Ok(())
 }

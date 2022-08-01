@@ -62,24 +62,17 @@ pub struct Graph {
 }
 
 impl Graph {
-    pub fn new_authoritative(data: NodeData) -> Graph {
-        let mut nodes = HashMap::new();
-        let mut id_generator = IdGenerator::new();
-        let root_node_id = Some({
-            let id = id_generator.generate();
-            nodes.insert(id, Node::new(id, data));
-            id
-        });
+    pub fn new_authoritative() -> Graph {
         Graph {
-            nodes,
-            root_node_id,
-            id_generator: Some(id_generator),
+            nodes: HashMap::new(),
+            root_node_id: None,
+            id_generator: Some(IdGenerator::new()),
         }
     }
 
     pub fn new_client() -> Graph {
         Graph {
-            nodes: Default::default(),
+            nodes: HashMap::new(),
             root_node_id: None,
             id_generator: None,
         }
