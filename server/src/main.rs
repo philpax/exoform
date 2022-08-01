@@ -4,6 +4,18 @@ use clap::Parser;
 use shared::{protocol::Message, Graph, GraphChange, GraphCommand};
 use tokio::{net, sync::mpsc, task::JoinHandle};
 
+macro_rules! make_handle_type {
+    ($handle_name:ident, $message_type:ident) => {
+        #[derive(Debug, Clone)]
+        pub struct $handle_name(::tokio::sync::mpsc::Sender<$message_type>);
+        impl $handle_name {
+            pub async fn send(&self, msg: $message_type) -> anyhow::Result<()> {
+                Ok(self.0.send(msg).await?)
+            }
+        }
+    };
+}
+
 struct Peer {
     address: SocketAddr,
     receiver: mpsc::Receiver<PeerMessage>,
@@ -14,7 +26,7 @@ struct Peer {
     room: Option<RoomHandle>,
 }
 #[derive(Debug, Clone)]
-enum PeerMessage {
+pub enum PeerMessage {
     Disconnect,
     GraphCommand(GraphCommand),
     GraphChange(GraphChange),
@@ -25,13 +37,12 @@ impl Peer {
         match msg {
             PeerMessage::Disconnect => {
                 self.coordinator
-                    .0
                     .send(CoordinatorMessage::PeerLeave(self.address))
                     .await?
             }
             PeerMessage::GraphCommand(gc) => {
                 if let Some(room) = &self.room {
-                    room.0.send(RoomMessage::GraphCommand(gc)).await?;
+                    room.send(RoomMessage::GraphCommand(gc)).await?;
                 }
             }
             PeerMessage::GraphChange(gc) => {
@@ -49,8 +60,7 @@ impl Peer {
         }
     }
 }
-#[derive(Debug, Clone)]
-pub struct PeerHandle(mpsc::Sender<PeerMessage>);
+make_handle_type!(PeerHandle, PeerMessage);
 impl PeerHandle {
     pub fn new(
         coordinator: CoordinatorHandle,
@@ -121,25 +131,22 @@ impl Room {
     async fn handle_message(&mut self, msg: RoomMessage) -> anyhow::Result<()> {
         match msg {
             RoomMessage::PeerJoin(address, peer) => {
-                peer.0
-                    .send(PeerMessage::GraphChange(GraphChange::Initialize(
-                        self.graph.to_components(),
-                    )))
-                    .await?;
+                peer.send(PeerMessage::GraphChange(GraphChange::Initialize(
+                    self.graph.to_components(),
+                )))
+                .await?;
                 self.peers.insert(address, peer);
             }
             RoomMessage::PeerLeave(address) => {
                 if let Some(peer) = self.peers.remove(&address) {
-                    peer.0.send(PeerMessage::SetRoom(None)).await?;
+                    peer.send(PeerMessage::SetRoom(None)).await?;
                 }
             }
             RoomMessage::GraphCommand(gc) => {
                 let changes = self.graph.apply_command(&gc);
                 for change in changes {
                     for peer in self.peers.values() {
-                        peer.0
-                            .send(PeerMessage::GraphChange(change.clone()))
-                            .await?;
+                        peer.send(PeerMessage::GraphChange(change.clone())).await?;
                     }
                 }
             }
@@ -155,8 +162,7 @@ impl Room {
         }
     }
 }
-#[derive(Debug, Clone)]
-pub struct RoomHandle(mpsc::Sender<RoomMessage>);
+make_handle_type!(RoomHandle, RoomMessage);
 impl RoomHandle {
     async fn new(filename: String) -> anyhow::Result<RoomHandle> {
         let (sender, receiver) = mpsc::channel(8);
@@ -198,7 +204,6 @@ pub struct Coordinator {
     _listener_task: JoinHandle<anyhow::Result<()>>,
     room: RoomHandle,
 }
-pub struct CoordinatorHandle(mpsc::Sender<CoordinatorMessage>);
 #[derive(Debug, Clone)]
 pub enum CoordinatorMessage {
     PeerJoin(SocketAddr, PeerHandle),
@@ -238,18 +243,16 @@ impl Coordinator {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
                 CoordinatorMessage::PeerJoin(addr, peer) => {
-                    peer.0
-                        .send(PeerMessage::SetRoom(Some(self.room.clone())))
+                    peer.send(PeerMessage::SetRoom(Some(self.room.clone())))
                         .await?;
                     self.room
-                        .0
                         .send(RoomMessage::PeerJoin(addr, peer.clone()))
                         .await?;
                     self.peers.insert(addr, peer);
                     println!("{addr:?}: joined");
                 }
                 CoordinatorMessage::PeerLeave(addr) => {
-                    self.room.0.send(RoomMessage::PeerLeave(addr)).await?;
+                    self.room.send(RoomMessage::PeerLeave(addr)).await?;
                     self.peers.remove(&addr);
                     println!("{addr:?}: left");
                 }
@@ -259,6 +262,7 @@ impl Coordinator {
         anyhow::Ok(())
     }
 }
+make_handle_type!(CoordinatorHandle, CoordinatorMessage);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
