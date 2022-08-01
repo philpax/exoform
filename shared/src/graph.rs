@@ -143,7 +143,7 @@ impl Graph {
         ids.into_iter().map(GraphChange::DeleteNode).collect()
     }
 
-    fn apply_command(&mut self, command: &GraphCommand) -> Option<Vec<GraphChange>> {
+    fn apply_command_impl(&mut self, command: &GraphCommand) -> Option<Vec<GraphChange>> {
         let mut changes = vec![];
         match command {
             GraphCommand::AddChild(parent_id, index, node_data) => {
@@ -227,16 +227,11 @@ impl Graph {
         Some(changes)
     }
 
-    pub fn apply_commands(&mut self, commands: &[GraphCommand]) -> Vec<GraphChange> {
+    pub fn apply_command(&mut self, command: &GraphCommand) -> Vec<GraphChange> {
         assert!(self.is_authoritative());
-        let mut ret = vec![];
-        for command in commands {
-            ret.append(
-                &mut self
-                    .apply_command(command)
-                    .expect("failed to apply commands cleanly"),
-            );
-        }
+        let mut ret = self
+            .apply_command_impl(command)
+            .expect("failed to apply commands cleanly");
         ret.append(&mut self.garbage_collect());
         ret
     }

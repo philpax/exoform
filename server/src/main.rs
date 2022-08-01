@@ -11,31 +11,16 @@ struct Peer {
     _write_task: JoinHandle<anyhow::Result<()>>,
     write_sender: mpsc::Sender<Message>,
     coordinator: CoordinatorHandle,
+    room: Option<RoomHandle>,
 }
 #[derive(Debug, Clone)]
 enum PeerMessage {
     Disconnect,
     GraphCommand(GraphCommand),
     GraphChange(GraphChange),
+    SetRoom(Option<RoomHandle>),
 }
 impl Peer {
-    fn new(
-        address: SocketAddr,
-        receiver: mpsc::Receiver<PeerMessage>,
-        read_task: JoinHandle<anyhow::Result<()>>,
-        write_task: JoinHandle<anyhow::Result<()>>,
-        write_sender: mpsc::Sender<Message>,
-        coordinator: CoordinatorHandle,
-    ) -> Self {
-        Peer {
-            address,
-            receiver,
-            _read_task: read_task,
-            _write_task: write_task,
-            write_sender,
-            coordinator,
-        }
-    }
     async fn handle_message(&mut self, msg: PeerMessage) -> anyhow::Result<()> {
         match msg {
             PeerMessage::Disconnect => {
@@ -45,13 +30,15 @@ impl Peer {
                     .await?
             }
             PeerMessage::GraphCommand(gc) => {
-                self.coordinator
-                    .0
-                    .send(CoordinatorMessage::GraphCommand(gc))
-                    .await?;
+                if let Some(room) = &self.room {
+                    room.0.send(RoomMessage::GraphCommand(gc)).await?;
+                }
             }
             PeerMessage::GraphChange(gc) => {
                 self.write_sender.send(Message::GraphChange(gc)).await?;
+            }
+            PeerMessage::SetRoom(room) => {
+                self.room = room;
             }
         }
         Ok(())
@@ -102,17 +89,106 @@ impl PeerHandle {
             anyhow::Ok(())
         });
 
-        let mut peer = Peer::new(
+        let mut peer = Peer {
             address,
             receiver,
-            read_task,
-            write_task,
+            _read_task: read_task,
+            _write_task: write_task,
             write_sender,
             coordinator,
-        );
+            room: None,
+        };
         tokio::spawn(async move { peer.run().await });
 
         Self(sender)
+    }
+}
+
+pub struct Room {
+    peers: HashMap<SocketAddr, PeerHandle>,
+    _save_kicker_task: JoinHandle<Result<(), anyhow::Error>>,
+    graph: Graph,
+    receiver: mpsc::Receiver<RoomMessage>,
+}
+#[derive(Debug, Clone)]
+pub enum RoomMessage {
+    PeerJoin(SocketAddr, PeerHandle),
+    PeerLeave(SocketAddr),
+    GraphCommand(GraphCommand),
+    Save(String),
+}
+impl Room {
+    async fn handle_message(&mut self, msg: RoomMessage) -> anyhow::Result<()> {
+        match msg {
+            RoomMessage::PeerJoin(address, peer) => {
+                peer.0
+                    .send(PeerMessage::GraphChange(GraphChange::Initialize(
+                        self.graph.to_components(),
+                    )))
+                    .await?;
+                self.peers.insert(address, peer);
+            }
+            RoomMessage::PeerLeave(address) => {
+                if let Some(peer) = self.peers.remove(&address) {
+                    peer.0.send(PeerMessage::SetRoom(None)).await?;
+                }
+            }
+            RoomMessage::GraphCommand(gc) => {
+                let changes = self.graph.apply_command(&gc);
+                for change in changes {
+                    for peer in self.peers.values() {
+                        peer.0
+                            .send(PeerMessage::GraphChange(change.clone()))
+                            .await?;
+                    }
+                }
+            }
+            RoomMessage::Save(filename) => {
+                tokio::fs::write(filename, serde_json::to_string_pretty(&self.graph)?).await?;
+            }
+        }
+        Ok(())
+    }
+    async fn run(&mut self) {
+        while let Some(msg) = self.receiver.recv().await {
+            self.handle_message(msg).await.unwrap();
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct RoomHandle(mpsc::Sender<RoomMessage>);
+impl RoomHandle {
+    async fn new(filename: String) -> anyhow::Result<RoomHandle> {
+        let (sender, receiver) = mpsc::channel(8);
+
+        let graph = match tokio::fs::read_to_string(&filename).await {
+            Ok(contents) => serde_json::from_str(&contents)?,
+            _ => Graph::new_authoritative(),
+        };
+
+        let save_kicker_task = tokio::spawn({
+            let sender = sender.clone();
+            async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    sender.send(RoomMessage::Save(filename.clone())).await?;
+                }
+
+                #[allow(unreachable_code)]
+                anyhow::Ok(())
+            }
+        });
+
+        let mut room = Room {
+            peers: HashMap::new(),
+            _save_kicker_task: save_kicker_task,
+            graph,
+            receiver,
+        };
+        tokio::spawn(async move { room.run().await });
+
+        Ok(RoomHandle(sender))
     }
 }
 
@@ -120,16 +196,13 @@ pub struct Coordinator {
     peers: HashMap<SocketAddr, PeerHandle>,
     receiver: mpsc::Receiver<CoordinatorMessage>,
     _listener_task: JoinHandle<anyhow::Result<()>>,
-    _save_kicker_task: JoinHandle<Result<(), anyhow::Error>>,
-    graph: Graph,
+    room: RoomHandle,
 }
 pub struct CoordinatorHandle(mpsc::Sender<CoordinatorMessage>);
 #[derive(Debug, Clone)]
 pub enum CoordinatorMessage {
     PeerJoin(SocketAddr, PeerHandle),
     PeerLeave(SocketAddr),
-    GraphCommand(GraphCommand),
-    Save(String),
 }
 impl Coordinator {
     async fn new(host: &str, port: u16, filename: String) -> anyhow::Result<Self> {
@@ -153,33 +226,11 @@ impl Coordinator {
             }
         });
 
-        let graph = match tokio::fs::read_to_string(&filename).await {
-            Ok(contents) => serde_json::from_str(&contents)?,
-            _ => Graph::new_authoritative(),
-        };
-
-        let save_kicker_task = tokio::spawn({
-            let sender = sender.clone();
-            async move {
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-                loop {
-                    interval.tick().await;
-                    sender
-                        .send(CoordinatorMessage::Save(filename.clone()))
-                        .await?;
-                }
-
-                #[allow(unreachable_code)]
-                anyhow::Ok(())
-            }
-        });
-
         Ok(Self {
             peers: HashMap::new(),
             receiver,
             _listener_task: listener_task,
-            _save_kicker_task: save_kicker_task,
-            graph,
+            room: RoomHandle::new(filename).await?,
         })
     }
 
@@ -188,29 +239,19 @@ impl Coordinator {
             match msg {
                 CoordinatorMessage::PeerJoin(addr, peer) => {
                     peer.0
-                        .send(PeerMessage::GraphChange(GraphChange::Initialize(
-                            self.graph.to_components(),
-                        )))
+                        .send(PeerMessage::SetRoom(Some(self.room.clone())))
+                        .await?;
+                    self.room
+                        .0
+                        .send(RoomMessage::PeerJoin(addr, peer.clone()))
                         .await?;
                     self.peers.insert(addr, peer);
                     println!("{addr:?}: joined");
                 }
                 CoordinatorMessage::PeerLeave(addr) => {
+                    self.room.0.send(RoomMessage::PeerLeave(addr)).await?;
                     self.peers.remove(&addr);
                     println!("{addr:?}: left");
-                }
-                CoordinatorMessage::GraphCommand(gc) => {
-                    let changes = self.graph.apply_commands(&[gc]);
-                    for change in changes {
-                        for peer in self.peers.values() {
-                            peer.0
-                                .send(PeerMessage::GraphChange(change.clone()))
-                                .await?;
-                        }
-                    }
-                }
-                CoordinatorMessage::Save(filename) => {
-                    tokio::fs::write(filename, serde_json::to_string_pretty(&self.graph)?).await?;
                 }
             }
         }
