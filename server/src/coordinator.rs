@@ -8,6 +8,7 @@ use tokio::{sync::mpsc, task::JoinHandle};
 
 pub struct Coordinator {
     peers: HashMap<SocketAddr, PeerHandle>,
+    sender: mpsc::Sender<CoordinatorMessage>,
     receiver: mpsc::Receiver<CoordinatorMessage>,
     _listener_task: JoinHandle<anyhow::Result<()>>,
     rooms: HashMap<String, RoomHandle>,
@@ -18,6 +19,7 @@ pub enum CoordinatorMessage {
     PeerJoin(SocketAddr, PeerHandle),
     PeerLeave(SocketAddr),
     PeerJoinRoom(SocketAddr, String),
+    RoomShutdown(String),
 }
 
 impl Coordinator {
@@ -44,6 +46,7 @@ impl Coordinator {
 
         Ok(Self {
             peers: HashMap::new(),
+            sender,
             receiver,
             _listener_task: listener_task,
             rooms: HashMap::new(),
@@ -74,13 +77,16 @@ impl Coordinator {
                         .cloned()
                         .expect("received peer join request from untracked peer");
 
-                    let room = self
-                        .rooms
-                        .entry(room_name.clone())
-                        .or_insert_with(|| RoomHandle::new(room_name));
+                    let room = self.rooms.entry(room_name.clone()).or_insert_with(|| {
+                        RoomHandle::new(room_name, CoordinatorHandle(self.sender.clone()))
+                    });
 
                     peer.send(PeerMessage::SetRoom(Some(room.clone()))).await?;
                     room.send(RoomMessage::PeerJoin(addr, peer.clone())).await?;
+                }
+                CoordinatorMessage::RoomShutdown(room) => {
+                    self.rooms.remove(&room);
+                    println!("room {room:?}: shutdown");
                 }
             }
         }

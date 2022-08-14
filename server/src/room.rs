@@ -1,3 +1,5 @@
+use crate::coordinator::{CoordinatorHandle, CoordinatorMessage};
+
 use super::{
     peer::{PeerHandle, PeerMessage},
     util,
@@ -12,6 +14,7 @@ pub struct Room {
     _save_kicker_task: JoinHandle<anyhow::Result<()>>,
     graph: Graph,
     receiver: mpsc::Receiver<RoomMessage>,
+    coordinator: CoordinatorHandle,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +39,12 @@ impl Room {
             RoomMessage::PeerLeave(address) => {
                 self.peers.remove(&address);
                 println!("room {:?}: {:?} left", self.name, address);
+
+                if self.peers.is_empty() {
+                    self.coordinator
+                        .send(CoordinatorMessage::RoomShutdown(self.name.clone()))
+                        .await?;
+                }
             }
             RoomMessage::GraphCommand(gc) => {
                 let changes = self.graph.apply_command(&gc);
@@ -77,7 +86,7 @@ impl Room {
 util::make_handle_type!(RoomHandle, RoomMessage);
 
 impl RoomHandle {
-    pub fn new(name: String) -> RoomHandle {
+    pub fn new(name: String, coordinator: CoordinatorHandle) -> RoomHandle {
         let (sender, receiver) = mpsc::channel(8);
 
         let graph = Graph::new_authoritative();
@@ -102,6 +111,7 @@ impl RoomHandle {
             _save_kicker_task: save_kicker_task,
             graph,
             receiver,
+            coordinator,
         };
         tokio::spawn(async move {
             room.load().await.unwrap();
