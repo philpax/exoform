@@ -128,6 +128,7 @@ pub async fn main() -> anyhow::Result<()> {
         .insert_resource(resources::NetworkState::new(shutdown.clone(), tx, rx))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy::pbr::wireframe::WireframePlugin)
+        .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
         .add_system(synchronise_network_to_local);
 
     #[cfg(target_arch = "wasm32")]

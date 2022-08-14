@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{diagnostic::Diagnostics, prelude::*};
 use bevy_egui::{egui, EguiContext};
 
 use crate::resources;
@@ -44,6 +44,7 @@ fn sdf_code_editor(
     render_parameters: ResMut<resources::RenderParameters>,
     graph: Res<Graph>,
     mesh_generation_result: Res<resources::MeshGenerationResult>,
+    diagnostics: Res<Diagnostics>,
 ) {
     let ctx = egui_context.ctx_mut();
     let mut commands = vec![];
@@ -104,7 +105,7 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                right_panel(ui, render_parameters, &mesh_generation_result);
+                right_panel(ui, render_parameters, &mesh_generation_result, &diagnostics);
             });
         })
         .response
@@ -141,6 +142,7 @@ fn right_panel(
     ui: &mut egui::Ui,
     mut render_parameters: ResMut<resources::RenderParameters>,
     mesh_generation_result: &resources::MeshGenerationResult,
+    diagnostics: &Diagnostics,
 ) {
     let mut rp = render_parameters.clone();
     ui.heading("Parameters");
@@ -158,6 +160,14 @@ fn right_panel(
             volume,
         } => {
             ui.heading("Statistics");
+            if let Some(fps) =
+                diagnostics.get_measurement(bevy::diagnostic::FrameTimeDiagnosticsPlugin::FPS)
+            {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("FPS:").strong());
+                    ui.label(format!("{:.02}", fps.value));
+                });
+            }
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Node count:").strong());
                 ui.label(exo_node_count.to_string());
