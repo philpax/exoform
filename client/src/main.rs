@@ -30,65 +30,18 @@ pub async fn main() -> anyhow::Result<()> {
         host: String,
         #[clap(short, long)]
         port: Option<u16>,
+        #[clap(short, long)]
+        room: String,
     }
 
     let args = Args::parse();
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
     let shutdown = Arc::new(AtomicBool::new(false));
-    let (socket_rx, socket_tx) = TcpStream::connect((args.host.as_ref(), port))
-        .await?
-        .into_split();
 
     let (rx, tx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(vec![])));
-    let _read_task = tokio::spawn({
-        let mut socket_rx = socket_rx;
-        let shutdown = shutdown.clone();
-        let rx = rx.clone();
-
-        async move {
-            loop {
-                use shared::protocol::Message;
-
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let message = match shared::protocol::read(&mut socket_rx).await {
-                    Some(Ok(Message::GraphChange(cmd))) => cmd,
-                    Some(Ok(msg)) => panic!("unexpected message: {msg:?}"),
-                    Some(Err(err)) => return Err(err),
-                    None => break,
-                };
-                rx.lock().unwrap().push(message);
-            }
-
-            anyhow::Ok(())
-        }
-    });
-    let _write_task = tokio::spawn({
-        let mut socket_tx = socket_tx;
-        let shutdown = shutdown.clone();
-        let tx = tx.clone();
-
-        async move {
-            loop {
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let to_send: Vec<shared::GraphCommand> = tx
-                    .lock()
-                    .map(|mut ms| ms.drain(..).collect())
-                    .unwrap_or_default();
-                for command in to_send {
-                    shared::protocol::write(&mut socket_tx, command.into()).await?;
-                }
-            }
-
-            anyhow::Ok(())
-        }
-    });
+    let _network_tasks =
+        create_network_tasks(&args.host, port, rx.clone(), tx.clone(), shutdown.clone()).await?;
 
     let mut app = App::new();
     #[cfg(target_arch = "wasm32")]
@@ -142,6 +95,70 @@ pub async fn main() -> anyhow::Result<()> {
         .run();
 
     Ok(())
+}
+
+async fn create_network_tasks(
+    host: &str,
+    port: u16,
+    rx: Arc<Mutex<Vec<shared::GraphChange>>>,
+    tx: Arc<Mutex<Vec<shared::protocol::Message>>>,
+    shutdown: Arc<AtomicBool>,
+) -> anyhow::Result<(
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+)> {
+    let (socket_rx, socket_tx) = TcpStream::connect((host, port)).await?.into_split();
+
+    let read_task = tokio::spawn({
+        let mut socket_rx = socket_rx;
+        let shutdown = shutdown.clone();
+        let rx = rx.clone();
+
+        async move {
+            loop {
+                use shared::protocol::Message;
+
+                if shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                let message = match shared::protocol::read(&mut socket_rx).await {
+                    Some(Ok(Message::GraphChange(cmd))) => cmd,
+                    Some(Ok(msg)) => panic!("unexpected message: {msg:?}"),
+                    Some(Err(err)) => return Err(err),
+                    None => break,
+                };
+                rx.lock().unwrap().push(message);
+            }
+
+            anyhow::Ok(())
+        }
+    });
+    let write_task = tokio::spawn({
+        let mut socket_tx = socket_tx;
+        let shutdown = shutdown.clone();
+        let tx = tx.clone();
+
+        async move {
+            loop {
+                if shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                let to_send: Vec<_> = tx
+                    .lock()
+                    .map(|mut ms| ms.drain(..).collect())
+                    .unwrap_or_default();
+                for message in to_send {
+                    shared::protocol::write(&mut socket_tx, message).await?;
+                }
+            }
+
+            anyhow::Ok(())
+        }
+    });
+
+    Ok((read_task, write_task))
 }
 
 fn synchronise_network_to_local(
