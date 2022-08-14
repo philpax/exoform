@@ -40,6 +40,12 @@ pub async fn main() -> anyhow::Result<()> {
     let shutdown = Arc::new(AtomicBool::new(false));
 
     let (rx, tx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(vec![])));
+    tx.lock().unwrap().push(
+        shared::protocol::RequestJoin {
+            room: args.room.clone(),
+        }
+        .into(),
+    );
     let _network_tasks =
         create_network_tasks(&args.host, port, rx.clone(), tx.clone(), shutdown.clone()).await?;
 

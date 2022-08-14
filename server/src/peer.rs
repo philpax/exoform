@@ -7,7 +7,10 @@ use super::{
 };
 use tokio::{net, sync::mpsc, task::JoinHandle};
 
-use shared::{protocol::Message, GraphChange, GraphCommand};
+use shared::{
+    protocol::{Message, RequestJoin},
+    GraphChange, GraphCommand,
+};
 
 pub struct Peer {
     address: SocketAddr,
@@ -21,6 +24,7 @@ pub struct Peer {
 
 #[derive(Debug, Clone)]
 pub enum PeerMessage {
+    RequestJoin(RequestJoin),
     Disconnect,
     GraphCommand(GraphCommand),
     GraphChange(GraphChange),
@@ -30,6 +34,11 @@ pub enum PeerMessage {
 impl Peer {
     async fn handle_message(&mut self, msg: PeerMessage) -> anyhow::Result<()> {
         match msg {
+            PeerMessage::RequestJoin(req) => {
+                self.coordinator
+                    .send(CoordinatorMessage::PeerJoinRoom(self.address, req.room))
+                    .await?
+            }
             PeerMessage::Disconnect => {
                 self.coordinator
                     .send(CoordinatorMessage::PeerLeave(self.address))
@@ -44,6 +53,9 @@ impl Peer {
                 self.write_sender.send(Message::GraphChange(gc)).await?;
             }
             PeerMessage::SetRoom(room) => {
+                if let Some(room) = &self.room {
+                    room.send(RoomMessage::PeerLeave(self.address)).await?;
+                }
                 self.room = room;
             }
         }
@@ -71,7 +83,8 @@ impl PeerHandle {
             async move {
                 loop {
                     let message = match shared::protocol::read(&mut read).await {
-                        Some(Ok(Message::GraphCommand(cmd))) => cmd,
+                        Some(Ok(Message::RequestJoin(req))) => PeerMessage::RequestJoin(req),
+                        Some(Ok(Message::GraphCommand(cmd))) => PeerMessage::GraphCommand(cmd),
                         Some(Ok(msg)) => anyhow::bail!("unexpected message: {msg:?}"),
                         Some(Err(err)) => return Err(err),
                         None => {
@@ -79,7 +92,7 @@ impl PeerHandle {
                             break;
                         }
                     };
-                    sender.send(PeerMessage::GraphCommand(message)).await?;
+                    sender.send(message).await?;
                 }
 
                 anyhow::Ok(())

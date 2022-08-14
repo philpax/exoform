@@ -14,12 +14,10 @@ async fn main() -> anyhow::Result<()> {
         host: String,
         #[clap(short, long)]
         port: Option<u16>,
-        #[clap(default_value_t = String::from("graph.json"))]
-        filename: String,
     }
 
     let args = Args::parse();
     let port = args.port.unwrap_or(shared::DEFAULT_PORT);
 
-    coordinator::Coordinator::coordinate(&args.host, port, args.filename).await
+    coordinator::Coordinator::coordinate(&args.host, port).await
 }

@@ -10,17 +10,18 @@ pub struct Coordinator {
     peers: HashMap<SocketAddr, PeerHandle>,
     receiver: mpsc::Receiver<CoordinatorMessage>,
     _listener_task: JoinHandle<anyhow::Result<()>>,
-    room: RoomHandle,
+    rooms: HashMap<String, RoomHandle>,
 }
 
 #[derive(Debug, Clone)]
 pub enum CoordinatorMessage {
     PeerJoin(SocketAddr, PeerHandle),
     PeerLeave(SocketAddr),
+    PeerJoinRoom(SocketAddr, String),
 }
 
 impl Coordinator {
-    async fn new(host: &str, port: u16, filename: String) -> anyhow::Result<Self> {
+    async fn new(host: &str, port: u16) -> anyhow::Result<Self> {
         let (sender, receiver) = mpsc::channel(8);
 
         let listener_task = tokio::spawn({
@@ -45,7 +46,7 @@ impl Coordinator {
             peers: HashMap::new(),
             receiver,
             _listener_task: listener_task,
-            room: RoomHandle::new(filename).await?,
+            rooms: HashMap::new(),
         })
     }
 
@@ -53,18 +54,33 @@ impl Coordinator {
         while let Some(msg) = self.receiver.recv().await {
             match msg {
                 CoordinatorMessage::PeerJoin(addr, peer) => {
-                    peer.send(PeerMessage::SetRoom(Some(self.room.clone())))
-                        .await?;
-                    self.room
-                        .send(RoomMessage::PeerJoin(addr, peer.clone()))
-                        .await?;
                     self.peers.insert(addr, peer);
-                    println!("{addr:?}: joined");
+                    println!("peer {addr:?}: joined");
                 }
                 CoordinatorMessage::PeerLeave(addr) => {
-                    self.room.send(RoomMessage::PeerLeave(addr)).await?;
+                    let peer = self
+                        .peers
+                        .get(&addr)
+                        .cloned()
+                        .expect("received peer leave request from untracked peer");
+                    peer.send(PeerMessage::SetRoom(None)).await?;
                     self.peers.remove(&addr);
-                    println!("{addr:?}: left");
+                    println!("peer {addr:?}: left");
+                }
+                CoordinatorMessage::PeerJoinRoom(addr, room_name) => {
+                    let peer = self
+                        .peers
+                        .get(&addr)
+                        .cloned()
+                        .expect("received peer join request from untracked peer");
+
+                    let room = self
+                        .rooms
+                        .entry(room_name.clone())
+                        .or_insert_with(|| RoomHandle::new(room_name));
+
+                    peer.send(PeerMessage::SetRoom(Some(room.clone()))).await?;
+                    room.send(RoomMessage::PeerJoin(addr, peer.clone())).await?;
                 }
             }
         }
@@ -72,8 +88,8 @@ impl Coordinator {
         anyhow::Ok(())
     }
 
-    pub async fn coordinate(host: &str, port: u16, filename: String) -> anyhow::Result<()> {
-        let mut coordinator = Coordinator::new(host, port, filename).await?;
+    pub async fn coordinate(host: &str, port: u16) -> anyhow::Result<()> {
+        let mut coordinator = Coordinator::new(host, port).await?;
         coordinator.run().await
     }
 }

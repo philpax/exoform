@@ -3,10 +3,11 @@ use super::{
     util,
 };
 use shared::{Graph, GraphChange, GraphCommand};
-use std::{collections::HashMap, net::SocketAddr};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 pub struct Room {
+    name: String,
     peers: HashMap<SocketAddr, PeerHandle>,
     _save_kicker_task: JoinHandle<anyhow::Result<()>>,
     graph: Graph,
@@ -18,7 +19,7 @@ pub enum RoomMessage {
     PeerJoin(SocketAddr, PeerHandle),
     PeerLeave(SocketAddr),
     GraphCommand(GraphCommand),
-    Save(String),
+    Save,
 }
 
 impl Room {
@@ -30,11 +31,11 @@ impl Room {
                 )))
                 .await?;
                 self.peers.insert(address, peer);
+                println!("room {:?}: {:?} joined", self.name, address);
             }
             RoomMessage::PeerLeave(address) => {
-                if let Some(peer) = self.peers.remove(&address) {
-                    peer.send(PeerMessage::SetRoom(None)).await?;
-                }
+                self.peers.remove(&address);
+                println!("room {:?}: {:?} left", self.name, address);
             }
             RoomMessage::GraphCommand(gc) => {
                 let changes = self.graph.apply_command(&gc);
@@ -44,8 +45,8 @@ impl Room {
                     }
                 }
             }
-            RoomMessage::Save(filename) => {
-                tokio::fs::write(filename, serde_json::to_string_pretty(&self.graph)?).await?;
+            RoomMessage::Save => {
+                self.save().await?;
             }
         }
         Ok(())
@@ -55,18 +56,31 @@ impl Room {
             self.handle_message(msg).await.unwrap();
         }
     }
+
+    fn path(&self) -> PathBuf {
+        PathBuf::from("models")
+            .join(&self.name)
+            .with_extension("json")
+    }
+
+    async fn load(&mut self) -> anyhow::Result<()> {
+        if let Ok(contents) = tokio::fs::read_to_string(self.path()).await {
+            self.graph = serde_json::from_str(&contents)?;
+        }
+        Ok(())
+    }
+    async fn save(&mut self) -> anyhow::Result<()> {
+        Ok(tokio::fs::write(self.path(), serde_json::to_string_pretty(&self.graph)?).await?)
+    }
 }
 
 util::make_handle_type!(RoomHandle, RoomMessage);
 
 impl RoomHandle {
-    pub async fn new(filename: String) -> anyhow::Result<RoomHandle> {
+    pub fn new(name: String) -> RoomHandle {
         let (sender, receiver) = mpsc::channel(8);
 
-        let graph = match tokio::fs::read_to_string(&filename).await {
-            Ok(contents) => serde_json::from_str(&contents)?,
-            _ => Graph::new_authoritative(),
-        };
+        let graph = Graph::new_authoritative();
 
         let save_kicker_task = tokio::spawn({
             let sender = sender.clone();
@@ -74,7 +88,7 @@ impl RoomHandle {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
                 loop {
                     interval.tick().await;
-                    sender.send(RoomMessage::Save(filename.clone())).await?;
+                    sender.send(RoomMessage::Save).await?;
                 }
 
                 #[allow(unreachable_code)]
@@ -83,13 +97,17 @@ impl RoomHandle {
         });
 
         let mut room = Room {
+            name,
             peers: HashMap::new(),
             _save_kicker_task: save_kicker_task,
             graph,
             receiver,
         };
-        tokio::spawn(async move { room.run().await });
+        tokio::spawn(async move {
+            room.load().await.unwrap();
+            room.run().await;
+        });
 
-        Ok(RoomHandle(sender))
+        RoomHandle(sender)
     }
 }

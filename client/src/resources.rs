@@ -29,20 +29,23 @@ pub struct OccupiedScreenSpace {
 
 pub struct NetworkState {
     shutdown: Arc<AtomicBool>,
-    pub tx: Arc<Mutex<Vec<shared::GraphCommand>>>,
+    pub tx: Arc<Mutex<Vec<shared::protocol::Message>>>,
     pub rx: Arc<Mutex<Vec<shared::GraphChange>>>,
 }
 impl NetworkState {
     pub fn new(
         shutdown: Arc<AtomicBool>,
-        tx: Arc<Mutex<Vec<shared::GraphCommand>>>,
+        tx: Arc<Mutex<Vec<shared::protocol::Message>>>,
         rx: Arc<Mutex<Vec<shared::GraphChange>>>,
     ) -> Self {
         Self { shutdown, tx, rx }
     }
 
     pub fn send(&mut self, commands: &[shared::GraphCommand]) {
-        self.tx.lock().unwrap().extend_from_slice(commands);
+        self.tx
+            .lock()
+            .unwrap()
+            .extend(commands.into_iter().map(|cmd| cmd.clone().into()));
     }
 }
 impl Drop for NetworkState {

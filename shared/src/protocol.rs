@@ -3,10 +3,22 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::{GraphChange, GraphCommand};
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+pub struct RequestJoin {
+    pub room: String,
+}
+
+// TODO: consider splitting this up into PeerOutgoingMessage and PeerIncomingMessage
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub enum Message {
+    RequestJoin(RequestJoin),
     GraphCommand(GraphCommand),
     GraphChange(GraphChange),
+}
+impl From<RequestJoin> for Message {
+    fn from(req: RequestJoin) -> Self {
+        Self::RequestJoin(req)
+    }
 }
 impl From<GraphCommand> for Message {
     fn from(cmd: GraphCommand) -> Self {
