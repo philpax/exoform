@@ -8,7 +8,7 @@ use super::{
 use tokio::{net, sync::mpsc, task::JoinHandle};
 
 use shared::{
-    protocol::{Message, RequestJoin},
+    protocol::{PeerIncomingMessage, PeerOutgoingMessage, RequestJoin},
     GraphChange, GraphCommand,
 };
 
@@ -17,7 +17,7 @@ pub struct Peer {
     receiver: mpsc::Receiver<PeerMessage>,
     _read_task: JoinHandle<anyhow::Result<()>>,
     _write_task: JoinHandle<anyhow::Result<()>>,
-    write_sender: mpsc::Sender<Message>,
+    write_sender: mpsc::Sender<PeerIncomingMessage>,
     coordinator: CoordinatorHandle,
     room: Option<RoomHandle>,
 }
@@ -50,7 +50,9 @@ impl Peer {
                 }
             }
             PeerMessage::GraphChange(gc) => {
-                self.write_sender.send(Message::GraphChange(gc)).await?;
+                self.write_sender
+                    .send(PeerIncomingMessage::GraphChange(gc))
+                    .await?;
             }
             PeerMessage::SetRoom(room) => {
                 if let Some(room) = &self.room {
@@ -83,9 +85,12 @@ impl PeerHandle {
             async move {
                 loop {
                     let message = match shared::protocol::read(&mut read).await {
-                        Some(Ok(Message::RequestJoin(req))) => PeerMessage::RequestJoin(req),
-                        Some(Ok(Message::GraphCommand(cmd))) => PeerMessage::GraphCommand(cmd),
-                        Some(Ok(msg)) => anyhow::bail!("unexpected message: {msg:?}"),
+                        Some(Ok(PeerOutgoingMessage::RequestJoin(req))) => {
+                            PeerMessage::RequestJoin(req)
+                        }
+                        Some(Ok(PeerOutgoingMessage::GraphCommand(cmd))) => {
+                            PeerMessage::GraphCommand(cmd)
+                        }
                         Some(Err(err)) => return Err(err),
                         None => {
                             sender.send(PeerMessage::Disconnect).await?;

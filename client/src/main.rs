@@ -7,7 +7,10 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use clap::Parser;
 
-use shared::Graph;
+use shared::{
+    protocol::{PeerIncomingMessage, PeerOutgoingMessage},
+    Graph, GraphChange,
+};
 use tokio::net::TcpStream;
 
 mod camera;
@@ -106,8 +109,8 @@ pub async fn main() -> anyhow::Result<()> {
 async fn create_network_tasks(
     host: &str,
     port: u16,
-    rx: Arc<Mutex<Vec<shared::GraphChange>>>,
-    tx: Arc<Mutex<Vec<shared::protocol::Message>>>,
+    rx: Arc<Mutex<Vec<GraphChange>>>,
+    tx: Arc<Mutex<Vec<PeerOutgoingMessage>>>,
     shutdown: Arc<AtomicBool>,
 ) -> anyhow::Result<(
     tokio::task::JoinHandle<anyhow::Result<()>>,
@@ -122,15 +125,12 @@ async fn create_network_tasks(
 
         async move {
             loop {
-                use shared::protocol::Message;
-
                 if shutdown.load(Ordering::SeqCst) {
                     break;
                 }
 
                 let message = match shared::protocol::read(&mut socket_rx).await {
-                    Some(Ok(Message::GraphChange(cmd))) => cmd,
-                    Some(Ok(msg)) => panic!("unexpected message: {msg:?}"),
+                    Some(Ok(PeerIncomingMessage::GraphChange(cmd))) => cmd,
                     Some(Err(err)) => return Err(err),
                     None => break,
                 };
