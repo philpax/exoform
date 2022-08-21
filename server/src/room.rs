@@ -79,6 +79,9 @@ impl Room {
         Ok(())
     }
     async fn save(&mut self) -> anyhow::Result<()> {
+        if let Some(path) = self.path().parent() {
+            tokio::fs::create_dir_all(path).await?;
+        }
         Ok(tokio::fs::write(self.path(), serde_json::to_string_pretty(&self.graph)?).await?)
     }
 }
