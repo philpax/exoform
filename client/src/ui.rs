@@ -2,7 +2,7 @@ use bevy::{diagnostic::Diagnostics, prelude::*};
 use bevy_egui::{egui, EguiContext};
 
 use crate::resources;
-use shared::{Graph, GraphCommand, Node, NodeData, NodeDataDiff, NodeDataMeta, NodeDiff, NodeId};
+use shared::{Graph, Node, NodeData, NodeDataDiff, NodeDataMeta, NodeDiff, NodeId};
 
 mod util;
 
@@ -40,14 +40,12 @@ fn sdf_code_editor(
     mut egui_context: ResMut<EguiContext>,
     mut selected_node: ResMut<SelectedNode>,
     mut occupied_screen_space: ResMut<resources::OccupiedScreenSpace>,
-    mut network_state: ResMut<resources::NetworkState>,
     render_parameters: ResMut<resources::RenderParameters>,
     graph: Res<Graph>,
     mesh_generation_result: Res<resources::MeshGenerationResult>,
     diagnostics: Res<Diagnostics>,
 ) {
     let ctx = egui_context.ctx_mut();
-    let mut commands = vec![];
 
     match *selected_node {
         SelectedNode::Uninitialized => {
@@ -94,7 +92,7 @@ fn sdf_code_editor(
         .default_width(400.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                left_panel(ui, &graph, &mut selected_node, &mut commands);
+                left_panel(ui, &graph, &mut selected_node);
             });
         })
         .response
@@ -111,30 +109,13 @@ fn sdf_code_editor(
         .response
         .rect
         .width();
-
-    network_state.send(&commands);
 }
 
-fn left_panel(
-    ui: &mut egui::Ui,
-    graph: &Graph,
-    selected_node: &mut SelectedNode,
-    commands: &mut Vec<GraphCommand>,
-) {
+fn left_panel(ui: &mut egui::Ui, graph: &Graph, selected_node: &mut SelectedNode) {
     if let Some(root_node_id) = graph.root_node_id() {
-        commands.append(&mut render_egui_tree(
-            ui,
-            &graph,
-            selected_node,
-            None,
-            root_node_id,
-            0,
-        ));
+        render_egui_tree(ui, &graph, selected_node, root_node_id, 0);
     } else {
-        let new_child = util::render_add_button_max_width(ui, util::depth_to_colour(0, false));
-        if let Some(node_data) = new_child {
-            commands.push(GraphCommand::CreateNewRoot(node_data));
-        }
+        util::render_add_button_max_width(ui, util::depth_to_colour(0, false));
     }
 }
 
@@ -155,7 +136,6 @@ fn right_panel(
         resources::MeshGenerationResult::Unbuilt => {}
         resources::MeshGenerationResult::Failure(_) => {}
         resources::MeshGenerationResult::Successful {
-            exo_node_count,
             triangle_count,
             volume,
         } => {
@@ -168,10 +148,6 @@ fn right_panel(
                     ui.label(format!("{:.02}", fps.value));
                 });
             }
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Node count:").strong());
-                ui.label(exo_node_count.to_string());
-            });
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("Triangle count:").strong());
                 ui.label(triangle_count.to_string());
@@ -188,52 +164,38 @@ fn render_egui_tree(
     ui: &mut egui::Ui,
     graph: &Graph,
     selected_node: &mut SelectedNode,
-    parent_node_id: Option<NodeId>,
     node_id: NodeId,
     depth: usize,
-) -> Vec<GraphCommand> {
+) {
     let node = graph.get(node_id).unwrap();
 
-    let mut commands = vec![];
     ui.push_id(node_id, |ui| {
         let id = ui.make_persistent_id(node.data.name());
 
         egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
             .show_header(ui, |ui| {
-                commands.extend(render_header(
-                    ui,
-                    graph,
-                    selected_node,
-                    parent_node_id,
-                    node_id,
-                    depth,
-                ))
+                render_header(ui, graph, selected_node, node_id, depth)
             })
             .body(|ui| {
                 egui::CollapsingHeader::new("Parameters")
                     .default_open(true)
                     .show(ui, |ui| {
-                        commands.extend(render_selected_node(ui, node, depth));
+                        render_selected_node(ui, node, depth);
                     });
                 if node.data.can_have_children() {
-                    commands.extend(render_children(ui, graph, selected_node, node, depth));
+                    render_children(ui, graph, selected_node, node, depth);
                 }
             });
     });
-
-    commands
 }
 
 fn render_header(
     ui: &mut egui::Ui,
     graph: &Graph,
     selected_node: &mut SelectedNode,
-    parent_node_id: Option<NodeId>,
     node_id: NodeId,
     depth: usize,
-) -> Vec<GraphCommand> {
-    let mut commands = vec![];
-
+) {
     let interact_size = ui.spacing().interact_size;
     let is_selected = selected_node.is_selected(node_id);
     let name = graph.get(node_id).unwrap().data.name();
@@ -257,23 +219,13 @@ fn render_header(
     }
     response.context_menu(|ui| {
         ui.menu_button("Add Parent", |ui| {
-            if let Some(node_data) = util::render_add_buttons(ui, false) {
-                commands.push(GraphCommand::AddNewParent(
-                    parent_node_id,
-                    node_id,
-                    node_data,
-                ));
-                ui.close_menu();
-            }
+            util::render_add_buttons(ui, false);
         });
 
         if ui.button("Delete").clicked() {
-            commands.push(GraphCommand::Remove(node_id));
             ui.close_menu();
         }
     });
-
-    commands
 }
 
 fn render_children(
@@ -282,59 +234,43 @@ fn render_children(
     selected_node: &mut SelectedNode,
     parent: &Node,
     depth: usize,
-) -> Vec<GraphCommand> {
+) {
     let depth = depth + 1;
-    let mut commands: Vec<_> = parent
-        .children
-        .iter()
-        .enumerate()
-        .flat_map(|(idx, child_id)| match *child_id {
-            Some(child_id) => {
-                render_egui_tree(ui, graph, selected_node, Some(parent.id), child_id, depth)
-            }
-            None => util::render_add_button(ui, depth, parent.id, Some(idx))
-                .into_iter()
-                .collect(),
-        })
-        .collect();
-
-    if parent.data.can_have_children() {
-        let new_child = util::render_add_button_max_width(ui, util::depth_to_colour(depth, false));
-        if let Some(node_data) = new_child {
-            commands.push(GraphCommand::AddChild(parent.id, None, node_data));
+    for child_id in &parent.children {
+        match *child_id {
+            Some(child_id) => render_egui_tree(ui, graph, selected_node, child_id, depth),
+            None => util::render_add_button(ui, depth),
         }
     }
 
-    commands
+    if parent.data.can_have_children() {
+        util::render_add_button_max_width(ui, util::depth_to_colour(depth, false));
+    }
 }
 
-fn render_selected_node(ui: &mut egui::Ui, node: &Node, depth: usize) -> Option<GraphCommand> {
-    util::grid(ui, |ui| {
-        NodeDiff {
-            rgb: util::with_label(ui, "Colour", |ui| {
-                let depth_colour = util::depth_to_colour(depth, false);
+fn render_selected_node(ui: &mut egui::Ui, node: &Node, depth: usize) {
+    util::grid(ui, |ui| NodeDiff {
+        rgb: util::with_label(ui, "Colour", |ui| {
+            let depth_colour = util::depth_to_colour(depth, false);
 
-                util::with_reset_button(ui, node.rgb, Node::DEFAULT_COLOUR, |ui, (r, g, b)| {
-                    let mut rgb = [*r, *g, *b];
-                    let widget_changed =
-                        egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb).changed();
-                    let button_clicked = ui
-                        .add(util::coloured_button("Depth", depth_colour))
-                        .clicked();
-                    if button_clicked {
-                        rgb = depth_colour.to_rgb();
-                    }
-                    [*r, *g, *b] = rgb;
-                    widget_changed || button_clicked
-                })
-            }),
-            transform: util::render_transform(ui, &node.transform),
-            data: render_selected_node_data(ui, node),
-            children: None,
-        }
-        .into_option()
-        .map(|d| GraphCommand::ApplyDiff(node.id, d))
-    })
+            util::with_reset_button(ui, node.rgb, Node::DEFAULT_COLOUR, |ui, (r, g, b)| {
+                let mut rgb = [*r, *g, *b];
+                let widget_changed =
+                    egui::widgets::color_picker::color_edit_button_rgb(ui, &mut rgb).changed();
+                let button_clicked = ui
+                    .add(util::coloured_button("Depth", depth_colour))
+                    .clicked();
+                if button_clicked {
+                    rgb = depth_colour.to_rgb();
+                }
+                [*r, *g, *b] = rgb;
+                widget_changed || button_clicked
+            })
+        }),
+        transform: util::render_transform(ui, &node.transform),
+        data: render_selected_node_data(ui, node),
+        children: None,
+    });
 }
 
 fn render_selected_node_data(ui: &mut egui::Ui, node: &Node) -> Option<NodeDataDiff> {

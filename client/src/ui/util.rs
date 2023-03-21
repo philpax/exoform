@@ -1,6 +1,6 @@
 use bevy_egui::egui;
 use glam::{Quat, Vec3};
-use shared::{GraphCommand, NodeData, NodeDataMeta, NodeId, TransformDiff};
+use shared::{NodeData, NodeDataMeta, TransformDiff};
 
 pub fn coloured_button(text: &str, color: egui::color::Hsva) -> egui::Button {
     egui::widgets::Button::new(egui::RichText::new(text).color(color)).stroke(egui::Stroke {
@@ -162,14 +162,8 @@ pub fn render_add_buttons(ui: &mut egui::Ui, include_primitives: bool) -> Option
     new_node_data
 }
 
-pub fn render_add_button(
-    ui: &mut egui::Ui,
-    depth: usize,
-    parent_id: NodeId,
-    child_index: Option<usize>,
-) -> Option<GraphCommand> {
-    let new_child = render_add_button_max_width(ui, depth_to_colour(depth, false));
-    new_child.map(|node_data| GraphCommand::AddChild(parent_id, child_index, node_data))
+pub fn render_add_button(ui: &mut egui::Ui, depth: usize) {
+    render_add_button_max_width(ui, depth_to_colour(depth, false));
 }
 
 pub fn depth_to_colour(depth: usize, is_selected: bool) -> egui::color::Hsva {

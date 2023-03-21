@@ -32,7 +32,6 @@ fn keep_rebuilding_mesh(
     let mesh = match shared::mesh::generate_mesh(&graph, render_parameters.colours) {
         Ok(result) => {
             *mesh_generation_result = MeshGenerationResult::Successful {
-                exo_node_count: result.exo_node_count,
                 triangle_count: result.triangle_count,
                 volume: result.volume,
             };

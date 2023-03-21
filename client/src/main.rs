@@ -1,56 +1,23 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::path::PathBuf;
 
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use clap::Parser;
-
-use shared::{
-    protocol::{PeerIncomingMessage, PeerOutgoingMessage},
-    Graph, GraphChange,
-};
-use tokio::net::TcpStream;
 
 mod camera;
 mod mesh_generation;
 mod resources;
 mod ui;
 
-#[tokio::main]
-pub async fn main() -> anyhow::Result<()> {
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_error_panic_hook::set_once();
-        compile_error!("Argument parsing doesn't work on WASM. This is intentional as we're using a TCP server. Once the network protocol actually works, we can investigate using WebSocket or WebTransport.");
-    }
-
+pub fn main() -> anyhow::Result<()> {
     #[derive(Parser)]
     #[clap(author, version, about, long_about = None)]
     struct Args {
-        #[clap(short, long)]
-        host: String,
-        #[clap(short, long)]
-        port: Option<u16>,
-        #[clap(short, long)]
-        room: String,
+        #[clap()]
+        path: PathBuf,
     }
 
     let args = Args::parse();
-    let port = args.port.unwrap_or(shared::DEFAULT_PORT);
-
-    let shutdown = Arc::new(AtomicBool::new(false));
-
-    let (rx, tx) = (Arc::new(Mutex::new(vec![])), Arc::new(Mutex::new(vec![])));
-    tx.lock().unwrap().push(
-        shared::protocol::RequestJoin {
-            room: args.room.clone(),
-        }
-        .into(),
-    );
-    let _network_tasks =
-        create_network_tasks(&args.host, port, rx.clone(), tx.clone(), shutdown.clone()).await?;
 
     let mut app = App::new();
     #[cfg(target_arch = "wasm32")]
@@ -72,9 +39,11 @@ pub async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let graph: shared::Graph = serde_json::from_str(&std::fs::read_to_string(args.path)?)?;
+
     app.insert_resource(Msaa { samples: 4 })
         .insert_resource(winit_settings)
-        .insert_resource(shared::Graph::new_client())
+        .insert_resource(graph)
         .insert_resource(WindowDescriptor {
             width: 1600.,
             height: 900.,
@@ -87,11 +56,9 @@ pub async fn main() -> anyhow::Result<()> {
         })
         .insert_resource(resources::MeshGenerationResult::Unbuilt)
         .insert_resource(resources::OccupiedScreenSpace::default())
-        .insert_resource(resources::NetworkState::new(shutdown.clone(), tx, rx))
         .add_plugins(DefaultPlugins)
         .add_plugin(bevy::pbr::wireframe::WireframePlugin)
-        .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin)
-        .add_system(synchronise_network_to_local);
+        .add_plugin(bevy::diagnostic::FrameTimeDiagnosticsPlugin);
 
     #[cfg(target_arch = "wasm32")]
     app.add_plugin(bevy_web_fullscreen::FullViewportPlugin);
@@ -104,78 +71,6 @@ pub async fn main() -> anyhow::Result<()> {
         .run();
 
     Ok(())
-}
-
-async fn create_network_tasks(
-    host: &str,
-    port: u16,
-    rx: Arc<Mutex<Vec<GraphChange>>>,
-    tx: Arc<Mutex<Vec<PeerOutgoingMessage>>>,
-    shutdown: Arc<AtomicBool>,
-) -> anyhow::Result<(
-    tokio::task::JoinHandle<anyhow::Result<()>>,
-    tokio::task::JoinHandle<anyhow::Result<()>>,
-)> {
-    let (socket_rx, socket_tx) = TcpStream::connect((host, port)).await?.into_split();
-
-    let read_task = tokio::spawn({
-        let mut socket_rx = socket_rx;
-        let shutdown = shutdown.clone();
-        let rx = rx.clone();
-
-        async move {
-            loop {
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let message = match shared::protocol::read(&mut socket_rx).await {
-                    Some(Ok(PeerIncomingMessage::GraphChange(cmd))) => cmd,
-                    Some(Err(err)) => return Err(err),
-                    None => break,
-                };
-                rx.lock().unwrap().push(message);
-            }
-
-            anyhow::Ok(())
-        }
-    });
-    let write_task = tokio::spawn({
-        let mut socket_tx = socket_tx;
-        let shutdown = shutdown.clone();
-        let tx = tx.clone();
-
-        async move {
-            loop {
-                if shutdown.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                let to_send: Vec<_> = tx
-                    .lock()
-                    .map(|mut ms| ms.drain(..).collect())
-                    .unwrap_or_default();
-                for message in to_send {
-                    shared::protocol::write(&mut socket_tx, message).await?;
-                }
-            }
-
-            anyhow::Ok(())
-        }
-    });
-
-    Ok((read_task, write_task))
-}
-
-fn synchronise_network_to_local(
-    mut graph: ResMut<Graph>,
-    network_state: Res<resources::NetworkState>,
-) {
-    let changes = &mut network_state.rx.lock().unwrap();
-    if !changes.is_empty() {
-        graph.apply_changes(changes);
-        changes.clear();
-    }
 }
 
 fn setup(mut commands: Commands) {

@@ -16,7 +16,6 @@ pub struct Mesh {
 
 pub struct CompilationOutput {
     pub mesh: Mesh,
-    pub exo_node_count: usize,
     pub triangle_count: usize,
     pub volume: f32,
 }
@@ -74,7 +73,6 @@ pub fn generate_mesh(graph: &Graph, colours_enabled: bool) -> Result<Compilation
     let triangle_count = mesh.indices.len() / 3;
     Ok(CompilationOutput {
         mesh,
-        exo_node_count: graph.reachable_node_count(),
         triangle_count,
         volume: bounding_box.volume(),
     })

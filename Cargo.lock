@@ -1543,28 +1543,15 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "bevy_web_fullscreen",
- "bincode",
  "clap",
  "console_error_panic_hook",
  "console_log",
  "glam 0.20.5",
  "js-sys",
- "shared",
- "tokio",
- "wasm-bindgen",
- "wasm-bindgen-futures",
-]
-
-[[package]]
-name = "exoform-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bincode",
- "clap",
  "serde_json",
  "shared",
- "tokio",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
